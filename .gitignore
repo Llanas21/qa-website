@@ -1,0 +1,13 @@
+# Dependencias (se regeneran con "npm install")
+node_modules/
+
+# Variables de entorno — CONTIENE CONTRASEÑAS, nunca se sube
+querify-backend/.env
+
+# Logs
+npm-debug.log*
+*.log
+
+# Sistema
+.DS_Store
+Thumbs.db
