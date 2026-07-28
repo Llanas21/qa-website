@@ -2,7 +2,7 @@
 
 Backend en Node.js (Express + PostgreSQL) que recibe los prospectos del sitio, guarda cada uno, y corre la **secuencia automática de seguimiento por WhatsApp** (con correo de respaldo). Incluye un **panel de administración**.
 
-Funciona **sin credenciales en modo simulación**: puedes probar todo el flujo en local (el prospecto se guarda, la bienvenida se "envía", el cron avanza la secuencia y el panel muestra el timeline) sin cuentas de Meta/SMTP/Graph. Cuando pongas las credenciales, empieza a enviar de verdad sin tocar código.
+Funciona **sin credenciales en modo simulación**: puedes probar todo el flujo en local (el prospecto se guarda, la bienvenida se "envía", el cron avanza la secuencia y el panel muestra el timeline) sin cuentas de Meta/Graph. Cuando pongas las credenciales, empieza a enviar de verdad sin tocar código.
 
 ---
 
@@ -22,7 +22,7 @@ querify-backend/
 ├─ db/seed.sql          Las 8 fechas de inicio (curso × modalidad)
 ├─ src/db.js            Config (.env) + conexión a Postgres + flags de simulación
 ├─ src/templates.js     Las 4 plantillas de mensajes (texto + params de Meta)
-├─ src/providers.js     WhatsApp (Meta), correo (SMTP), sync (Graph) — con simulación
+├─ src/providers.js     WhatsApp (Meta), correo (Microsoft Graph), sync (Graph) — con simulación
 ├─ src/engine.js        Canal, deduplicado, alta de prospecto y motor de secuencia
 ├─ src/routes.js        POST /api/leads  +  webhook de WhatsApp
 ├─ src/admin.js         Panel de administración
@@ -103,11 +103,23 @@ npm run hash -- "tu-contraseña-segura"
 
 > Nota MX: WhatsApp usa el formato internacional (lada país + número). El webhook empata por el sufijo del número, así que tolera el prefijo `1` histórico de México.
 
-### Correo (respaldo)
-Llena `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` con los datos de tu proveedor SMTP.
+### Correo (respaldo, vía Microsoft Graph)
+
+El correo se envía mediante `POST /users/{buzón}/sendMail` de **Microsoft Graph**, como un **buzón compartido** (ej. `noreply@tudominio.com` o `noreply@tuempresa.onmicrosoft.com`). Reutiliza la misma app y el mismo token que la bitácora de Excel/SharePoint — una sola credencial para ambas cosas.
+
+1. **Buzón compartido**: en el admin center de Microsoft 365 → **Buzones compartidos** → **Agregar un buzón compartido**. No requiere licencia ni contraseña propia.
+2. **Registrar la app**: Entra ID → **Registros de aplicaciones** → **Nuevo registro** (solo tu organización, sin URI de redirección). Copia `Id. de aplicación (cliente)` → `GRAPH_CLIENT_ID` e `Id. de directorio (inquilino)` → `GRAPH_TENANT_ID`.
+3. **Secreto de cliente**: en la app → **Certificados y secretos** → **Nuevo secreto de cliente**. Copia el **valor** al momento (solo se muestra una vez) → `GRAPH_CLIENT_SECRET`.
+4. **Permisos de API**: **Agregar un permiso** → **Microsoft Graph** → **Permisos de aplicación** → `Mail.Send` (y `Files.ReadWrite.All` si vas a usar la bitácora). Luego **Conceder consentimiento de administrador** — sin esto los permisos no funcionan aunque aparezcan en la lista.
+5. **(Recomendado) Restringir el alcance**: por default `Mail.Send` permite enviar como *cualquier* buzón del tenant. Para limitarlo solo al buzón `noreply@...`, desde PowerShell (módulo `ExchangeOnlineManagement`):
+   ```powershell
+   Connect-ExchangeOnline
+   New-ApplicationAccessPolicy -AppId "<GRAPH_CLIENT_ID>" -PolicyScopeGroupId "noreply@tudominio.com" -AccessRight RestrictAccess -Description "Solo puede enviar como noreply"
+   ```
+6. **`.env`**: llena `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` y `MAIL_FROM` (solo la dirección, sin `"Nombre <correo>"` — el nombre para mostrar lo controla el propio buzón).
 
 ### Bitácora en Excel/SharePoint (opcional)
-Registra una app en Entra ID con permisos de aplicación `Files.ReadWrite.All` (o `Sites.ReadWrite.All`), crea un `.xlsx` en SharePoint con una **tabla** llamada `Prospectos`, y llena `GRAPH_*` en `.env`. Si lo dejas vacío, esta sincronización simplemente se omite (no bloquea nada).
+Usa la misma app de Graph de arriba (con el permiso `Files.ReadWrite.All`). Crea un `.xlsx` en SharePoint con una **tabla** llamada `Prospectos`, y llena `GRAPH_DRIVE_ID`, `GRAPH_WORKBOOK_ITEM_ID` y `GRAPH_TABLE_NAME` en `.env`. Si dejas estas variables vacías, la sincronización simplemente se omite (no bloquea nada).
 
 ---
 

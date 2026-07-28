@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 23 de julio de 2026
+Última actualización: 27 de julio de 2026
 
 ## Qué es
 
@@ -48,13 +48,22 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
 - [x] Identidad visual ajustada: tema claro, azul principal claro
       (#3B82F6), sin efectos de glow, tipografías Montserrat + Work Sans
 - [x] Probado en local (compu) y desde el celular en la misma red WiFi
+- [x] Correo (respaldo) resuelto vía **Microsoft Graph** (`sendMail` como
+      buzón compartido `noreply@...`), ya no por SMTP — el tenant tiene
+      Security Defaults activado y no ofrece contraseñas de aplicación.
+      Reutiliza la misma app de Entra ID que la bitácora a Excel/SharePoint.
+      Código, `.env.example` y `README.md` ya actualizados.
 
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar las 8 fechas de inicio en el panel
 - [ ] Credenciales reales: cuenta de Meta con las 4 plantillas de WhatsApp
-      aprobadas, SMTP para correo de respaldo, (opcional) Microsoft Graph
-      para sincronizar a Excel/SharePoint
+      aprobadas; llenar `GRAPH_*` en `.env` de producción (correo +
+      opcionalmente sync a Excel/SharePoint)
+- [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
+      vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
+      recomendado — por default el permiso alcanza para enviar como
+      cualquier buzón del tenant)
 - [ ] Desplegar en Railway (o similar) con PostgreSQL en la nube — hoy
       solo corre en la laptop
 - [ ] Dominio propio (opcional)
@@ -68,6 +77,10 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
   necesita que el servicio no se duerma)
 - **Canales:** WhatsApp principal con respaldo por correo; Instagram DM
   se mantiene manual, no se automatiza
+- **Correo:** Microsoft Graph (`sendMail` como buzón compartido), no SMTP
+  — el tenant tiene Security Defaults activado y no ofrece contraseñas de
+  aplicación; Graph además reutiliza la misma app que la bitácora a
+  Excel/SharePoint (una sola credencial para ambas cosas)
 - **Regla de duplicados:** contacto repetido en <14 días → actualiza el
   curso de interés sin reiniciar la secuencia; ≥14 días → se trata como
   prospecto frío que volvió y la secuencia se reinicia desde cero

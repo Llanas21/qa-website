@@ -1,6 +1,5 @@
 // src/providers.js — integraciones externas (WhatsApp, correo, Graph)
 // Todas degradan a "simulación" si faltan credenciales, para poder probar el flujo completo.
-const nodemailer = require('nodemailer');
 const { config } = require('./db');
 const tpl = require('./templates');
 
@@ -42,36 +41,8 @@ async function sendWhatsAppTemplate({ pais, numero, tipo, vars }) {
   }
 }
 
-/* ------------------------------- Correo (SMTP) ------------------------------- */
-let transporter = null;
-function getTransporter() {
-  if (!transporter && !config.simulate.email) {
-    transporter = nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.port === 465,
-      auth: { user: config.email.user, pass: config.email.pass },
-    });
-  }
-  return transporter;
-}
-
-async function sendEmail({ to, tipo, vars }) {
-  const { asunto, cuerpo } = tpl.render(tipo, vars);
-  if (config.simulate.email) {
-    console.info(`[SIMULA correo → ${to}] "${asunto}"`);
-    return { ok: true, estado: 'simulado' };
-  }
-  try {
-    await getTransporter().sendMail({ from: config.email.from, to, subject: asunto, text: cuerpo });
-    return { ok: true, estado: 'enviado' };
-  } catch (err) {
-    return { ok: false, estado: 'fallido', error: `Correo: ${err.message}` };
-  }
-}
-
-/* -------------------- Bitácora en Excel/SharePoint (Graph) -------------------- */
-// Best-effort: nunca bloquea el alta del prospecto. Agrega una fila a una tabla de Excel.
+/* --------------------------- Autenticación Graph ------------------------------ */
+// Compartida por correo (sendMail) y por la bitácora de sync a Excel/SharePoint.
 let graphToken = { value: null, exp: 0 };
 async function getGraphToken() {
   if (graphToken.value && Date.now() < graphToken.exp) return graphToken.value;
@@ -89,6 +60,48 @@ async function getGraphToken() {
   return graphToken.value;
 }
 
+/* ------------------------------- Correo (Graph) ------------------------------- */
+// Se envía como el buzón compartido `MAIL_FROM` (ej. noreply@QuerifyAnalytics.onmicrosoft.com)
+// vía POST /users/{buzón}/sendMail. Requiere el permiso de aplicación Mail.Send con
+// consentimiento de administrador (idealmente restringido a este buzón con una
+// Application Access Policy en Exchange Online).
+async function sendEmail({ to, tipo, vars }) {
+  const { asunto, cuerpo } = tpl.render(tipo, vars);
+  if (config.simulate.email) {
+    console.info(`[SIMULA correo → ${to}] "${asunto}"`);
+    return { ok: true, estado: 'simulado' };
+  }
+  try {
+    const token = await getGraphToken();
+    const remitente = config.email.from; // solo el correo, sin "Nombre <...>"
+    const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(remitente)}/sendMail`;
+    const body = {
+      message: {
+        subject: asunto,
+        body: { contentType: 'Text', content: cuerpo },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: false,
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    // sendMail responde 202 Accepted sin cuerpo cuando tiene éxito.
+    if (res.status !== 202) {
+      const data = await res.json().catch(() => ({}));
+      const msg = data?.error?.message || `HTTP ${res.status}`;
+      return { ok: false, estado: 'fallido', error: `Correo: ${msg}` };
+    }
+    return { ok: true, estado: 'enviado' };
+  } catch (err) {
+    return { ok: false, estado: 'fallido', error: `Correo: ${err.message}` };
+  }
+}
+
+/* -------------------- Bitácora en Excel/SharePoint (Graph) -------------------- */
+// Best-effort: nunca bloquea el alta del prospecto. Agrega una fila a una tabla de Excel.
 async function syncProspecto(p) {
   if (config.simulate.sync) {
     console.info(`[OMITE sync SharePoint] prospecto #${p.id} (${p.nombre})`);

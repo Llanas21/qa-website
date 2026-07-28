@@ -28,10 +28,11 @@ const config = {
     },
   },
 
+  // Correo se envía vía Microsoft Graph (ver providers.js), como el buzón
+  // compartido indicado aquí. Debe ser solo la dirección, sin "Nombre <...>":
+  // el nombre para mostrar lo controla el propio buzón en Microsoft 365.
   email: {
-    host: env('SMTP_HOST'), port: num('SMTP_PORT', 587),
-    user: env('SMTP_USER'), pass: env('SMTP_PASS'),
-    from: env('MAIL_FROM', 'Querify Analytics <no-responder@example.com>'),
+    from: env('MAIL_FROM', 'noreply@QuerifyAnalytics.onmicrosoft.com'),
   },
 
   graph: {
@@ -50,10 +51,11 @@ const config = {
 };
 
 // Flags de modo simulación (si faltan credenciales, no se envía nada real)
+const graphReady = !!(config.graph.tenantId && config.graph.clientId && config.graph.clientSecret);
 config.simulate = {
   whatsapp: !(config.whatsapp.token && config.whatsapp.phoneNumberId),
-  email: !(config.email.host && config.email.user),
-  sync: !(config.graph.tenantId && config.graph.clientId && config.graph.clientSecret && config.graph.workbookItemId),
+  email: !graphReady,
+  sync: !(graphReady && config.graph.workbookItemId),
 };
 
 const pool = new Pool({
