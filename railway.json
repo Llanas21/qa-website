@@ -1,0 +1,9 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "buildCommand": "cd querify-backend && npm install"
+  },
+  "deploy": {
+    "startCommand": "cd querify-backend && npm start"
+  }
+}

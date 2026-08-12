@@ -1,0 +1,10 @@
+{
+  "name": "qa-website",
+  "private": true,
+  "description": "Monorepo de Querify Analytics (querify-web + querify-backend). Ver railway.json para el despliegue.",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "cd querify-backend && npm install",
+    "start": "cd querify-backend && npm start"
+  }
+}
