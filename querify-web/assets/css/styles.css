@@ -297,6 +297,27 @@ ul{margin:0;padding:0;list-style:none}
 .cert b{color:var(--ink);font-family:var(--font-display)}
 .cert p{font-size:13.5px;color:var(--muted);margin-top:5px}
 
+/* ===================== Página de inscripción ===================== */
+.mono-label{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);margin:0 0 14px}
+.plan-pagos{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow-sm);overflow:hidden}
+.pago-row{display:flex;align-items:center;gap:16px;padding:16px 22px;border-top:1px solid var(--line)}
+.pago-row:first-child{border-top:none}
+.pago-row .pago-num{flex:0 0 auto;width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:14px}
+.pago-row div{flex:1}
+.pago-row b{font-size:15.5px}
+.pago-row p{font-size:13.5px;color:var(--muted);margin-top:3px}
+.pago-row .pago-monto{font-family:var(--font-display);font-weight:700;font-size:18px;color:var(--text)}
+
+.cohortes-list{display:flex;flex-direction:column;gap:10px}
+.cohorte-opt{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line-2);border-radius:var(--r-md);padding:13px 14px;cursor:pointer;transition:border-color .15s,background .15s}
+.cohorte-opt:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+.cohorte-opt input{accent-color:var(--accent-strong);width:17px;height:17px;flex:0 0 auto}
+.cohorte-opt .co-main{flex:1;display:flex;flex-direction:column;gap:3px}
+.cohorte-opt .co-main b{font-size:14.5px}
+.cohorte-opt .co-main span{font-family:var(--font-mono);font-size:12px;color:var(--muted-2)}
+.cohorte-opt .co-cupo{font-size:11.5px;color:var(--accent-ink);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.cohorte-opt:has(input:checked){border-color:var(--accent-strong);background:var(--accent-soft)}
+
 /* ===================== Página gracias ===================== */
 .thanks{min-height:calc(100vh - 71px);display:grid;place-items:center;background:linear-gradient(180deg,#F2F7FF,#E9F1FB);color:var(--text);position:relative;overflow:hidden;isolation:isolate;padding:40px 20px}
 .thanks-card{max-width:560px;text-align:center}

@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 27 de julio de 2026
+Última actualización: 10 de agosto de 2026
 
 ## Qué es
 
@@ -54,12 +54,36 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       Reutiliza la misma app de Entra ID que la bitácora a Excel/SharePoint.
       Código, `.env.example` y `README.md` ya actualizados.
 
+- [x] Apartado de lugar con pago real (Stripe) y cupo limitado por cohorte:
+      `POST /api/inscripcion` valida cupo y crea una Checkout Session de
+      $500 MXN; el webhook confirma el pago 1, crea al alumno, genera el
+      plan de 5 pagos (semanas 0/2/4/6/8) y ocupa el cupo. El cron cobra
+      los pagos 2-5 (link de Stripe por WhatsApp→correo cerca del
+      vencimiento). Panel: `/admin/cohortes` (fecha + cupo) y
+      `/admin/alumnos` (plan de pagos, marcar pagado a mano). Corre en
+      modo simulación sin credenciales de Stripe, igual que el resto del
+      sistema.
+- [x] Stripe conectado en modo **Test** (llaves + webhook vía Stripe CLI
+      local) y WhatsApp conectado con número de prueba de Meta + token
+      permanente de un System User — probados de extremo a extremo en
+      local. Falta pasar ambos a modo real (ver pendientes abajo).
+
+**Nota (WhatsApp):** la plantilla de bienvenida se llama
+`querify_bienvenida_v2` en Meta y en `TPL_BIENVENIDA`, no
+`querify_bienvenida` — un intento anterior dejó esa versión con contenido
+roto, y al borrarla Meta tardó más de lo normal en liberar el nombre para
+un reintento. No es necesario corregirlo, solo que no sorprenda el `_v2`
+al buscarla en WhatsApp Manager.
+
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
-      teléfonos/redes del footer, cargar las 8 fechas de inicio en el panel
-- [ ] Credenciales reales: cuenta de Meta con las 4 plantillas de WhatsApp
-      aprobadas; llenar `GRAPH_*` en `.env` de producción (correo +
-      opcionalmente sync a Excel/SharePoint)
+      teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
+      en `/admin/cohortes`
+- [ ] Que Meta apruebe las 5 plantillas de WhatsApp (hoy en PENDING)
+- [ ] Migrar WhatsApp del número de prueba a tu número de negocio real
+      (requiere verificación del negocio en Meta Business Manager)
+- [ ] Migrar Stripe de modo Test a Live (llaves + webhook permanente —
+      hoy el webhook depende de la CLI de Stripe corriendo en local)
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
@@ -88,6 +112,18 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
   degradados discretos (nada de glow ni sombras grandes), tipografías
   Montserrat (títulos) + Work Sans (texto) + IBM Plex Mono (detalles
   tipo código)
+- **Cohortes reemplaza a `fechas_inicio`:** una sola tabla para fecha de
+  inicio + cupo (antes eran conceptos separados). Se decidió fusionar en
+  vez de mantenerlas por separado porque el mensaje de "valor" y el cupo
+  real deben mostrar siempre la misma fecha — mantenerlas aparte hubiera
+  significado editar la fecha en dos lugares y arriesgar que se
+  desincronizaran. `engine.proximaFecha()` ahora lee de `cohortes`.
+- **Pagos 2-5 vía WhatsApp, no tarjeta guardada:** se cobra mandando un
+  link de Stripe cerca del vencimiento (mismo canal y cron que el
+  seguimiento), no se implementa cobro recurrente automático con tarjeta
+  guardada — mantiene todo en un solo mecanismo de envío ya probado.
+- **El cupo se ocupa al confirmar el pago 1, no al iniciar el checkout:**
+  evita reservar lugares de gente que abre el link y no paga.
 
 ## Cómo correr el proyecto en local
 

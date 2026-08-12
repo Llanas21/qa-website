@@ -25,6 +25,7 @@ const config = {
       recordatorio: env('TPL_RECORDATORIO', 'querify_recordatorio'),
       valor: env('TPL_VALOR', 'querify_valor'),
       cierre: env('TPL_CIERRE', 'querify_cierre'),
+      pago: env('TPL_PAGO', 'querify_pago'),
     },
   },
 
@@ -41,6 +42,26 @@ const config = {
     workbookItemId: env('GRAPH_WORKBOOK_ITEM_ID'), tableName: env('GRAPH_TABLE_NAME', 'Prospectos'),
   },
 
+  // Stripe Checkout para el apartado de lugar (pago 1) y los pagos 2-5.
+  // Si falta STRIPE_SECRET_KEY, toda la inscripción corre en modo simulación.
+  stripe: {
+    secretKey: env('STRIPE_SECRET_KEY'),
+    webhookSecret: env('STRIPE_WEBHOOK_SECRET'),
+    currency: env('STRIPE_CURRENCY', 'mxn'),
+  },
+
+  // Plan de pagos: 5 exhibiciones de $500 MXN (semanas 0/2/4/6/8 desde el
+  // inicio de la cohorte). La ventana de cobro es cuántos días antes del
+  // vencimiento se manda el link de pago por WhatsApp/correo.
+  pagos: {
+    monto: num('PAGO_MONTO_MXN', 500),
+    ventanaCobroDias: num('PAGOS_VENTANA_COBRO_DIAS', 3),
+  },
+
+  // Si se define, se usa como origen absoluto para las URLs de éxito/cancelado
+  // de Stripe en vez de derivarlo de la petición (útil detrás de proxies raros).
+  publicBaseUrl: env('PUBLIC_BASE_URL'),
+
   seq: {
     step1: num('SEQ_STEP1_HOURS', 24),
     step2: num('SEQ_STEP2_HOURS', 72),
@@ -56,6 +77,7 @@ config.simulate = {
   whatsapp: !(config.whatsapp.token && config.whatsapp.phoneNumberId),
   email: !graphReady,
   sync: !(graphReady && config.graph.workbookItemId),
+  stripe: !config.stripe.secretKey,
 };
 
 const pool = new Pool({

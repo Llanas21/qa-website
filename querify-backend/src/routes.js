@@ -1,7 +1,8 @@
-// src/routes.js — API pública (formulario) + webhook de WhatsApp
+// src/routes.js — API pública (formulario, inscripción) + webhooks (WhatsApp, Stripe)
 const express = require('express');
 const { config, query } = require('./db');
 const engine = require('./engine');
+const providers = require('./providers');
 
 const router = express.Router();
 
@@ -45,6 +46,92 @@ router.post('/api/leads', async (req, res) => {
   } catch (err) {
     console.error('[POST /api/leads]', err.message);
     if (!res.headersSent) res.status(500).json({ ok: false, error: 'Error del servidor.' });
+  }
+});
+
+/* --------------- GET /api/cohortes/:curso (selector de inscripción) --------------- */
+router.get('/api/cohortes/:curso', async (req, res) => {
+  try {
+    const curso = req.params.curso.toString();
+    const cohortes = await engine.cohortesDisponibles(curso);
+    res.json({ ok: true, cohortes });
+  } catch (err) {
+    console.error('[GET /api/cohortes]', err.message);
+    res.status(500).json({ ok: false, error: 'Error del servidor.' });
+  }
+});
+
+/* --------------------- POST /api/inscripcion (apartar lugar) --------------------- */
+router.post('/api/inscripcion', async (req, res) => {
+  const b = req.body || {};
+
+  // Mismo honeypot que /api/leads.
+  if (typeof b.empresa === 'string' && b.empresa.trim() !== '') {
+    return res.json({ ok: true });
+  }
+
+  const nombre = (b.nombre || '').toString().trim();
+  const correo = (b.correo || '').toString().trim();
+  const numero = (b.whatsapp?.numero || '').toString().replace(/\D/g, '');
+  const pais = (b.whatsapp?.pais || '').toString().trim() || null;
+  const cohorteId = Number(b.cohorteId);
+  const prospectoId = b.prospectoId ? Number(b.prospectoId) : null;
+
+  if (nombre.length < 2) return res.status(400).json({ ok: false, error: 'Nombre requerido.' });
+  if (!Number.isInteger(cohorteId) || cohorteId <= 0) return res.status(400).json({ ok: false, error: 'Elige una fecha de inicio.' });
+
+  const correoOk = correo === '' ? false : /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
+  const telOk = numero === '' ? false : (numero.length >= 7 && numero.length <= 15);
+  if (correo !== '' && !correoOk) return res.status(400).json({ ok: false, error: 'Correo inválido.' });
+  if (!telOk && !(correoOk && correo !== '')) {
+    return res.status(400).json({ ok: false, error: 'Deja un WhatsApp o un correo válido.' });
+  }
+
+  try {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const urlExito = `${origin}/inscripcion-gracias.html?session_id={CHECKOUT_SESSION_ID}`;
+    const urlCancelado = `${origin}/cursos/inscripcion.html?curso=${encodeURIComponent(b.curso || '')}&cancelado=1`;
+
+    const r = await engine.iniciarInscripcion({
+      cohorteId, nombre,
+      whatsapp: telOk ? { pais, numero } : null,
+      correo: correoOk ? correo : null,
+      prospectoId,
+      urlExito, urlCancelado,
+    });
+
+    if (!r.ok) {
+      if (r.motivo === 'sin_cupo') return res.status(409).json({ ok: false, error: 'Ese grupo ya no tiene cupo disponible. Elige otra fecha.' });
+      if (r.motivo === 'cohorte_no_existe') return res.status(404).json({ ok: false, error: 'Esa fecha ya no está disponible.' });
+      console.error('[POST /api/inscripcion] Stripe:', r.error);
+      return res.status(502).json({ ok: false, error: 'No se pudo iniciar el pago. Intenta de nuevo en un momento.' });
+    }
+
+    if (r.simulado) return res.json({ ok: true, simulado: true, redirect: '/inscripcion-gracias.html?simulado=1' });
+    res.json({ ok: true, url: r.url });
+  } catch (err) {
+    console.error('[POST /api/inscripcion]', err.message);
+    res.status(500).json({ ok: false, error: 'Error del servidor.' });
+  }
+});
+
+/* --------------------- Webhook de Stripe --------------------- */
+// req.body llega como Buffer sin parsear (express.raw en server.js, solo esta ruta).
+router.post('/webhook/stripe', async (req, res) => {
+  let event;
+  try {
+    event = providers.verificarEventoStripe(req.body, req.headers['stripe-signature']);
+  } catch (err) {
+    console.error('[webhook/stripe] firma inválida:', err.message);
+    return res.sendStatus(400);
+  }
+  res.sendStatus(200); // Stripe reintenta si no responde rápido; procesamos después.
+  try {
+    if (event.type === 'checkout.session.completed') {
+      await engine.procesarWebhookStripe(event.data.object);
+    }
+  } catch (err) {
+    console.error('[webhook/stripe]', err.message);
   }
 });
 

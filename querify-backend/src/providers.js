@@ -131,4 +131,56 @@ async function syncProspecto(p) {
   }
 }
 
-module.exports = { sendWhatsAppTemplate, sendEmail, syncProspecto };
+/* --------------------------------- Stripe -------------------------------------- */
+// Checkout Sessions hospedadas por Stripe para cada pago de $500 MXN (el pago 1 al
+// apartar el lugar, y los pagos 2-5 que cobra el cron). Si falta STRIPE_SECRET_KEY
+// se SIMULA: no se llama a Stripe, y quien invoque esto decide cómo continuar el
+// flujo sin una sesión real (ver engine.iniciarInscripcion / revisarPagosPorVencer).
+let stripeClient = null;
+function getStripe() {
+  if (!stripeClient) stripeClient = require('stripe')(config.stripe.secretKey);
+  return stripeClient;
+}
+
+// `monto` en MXN (no en centavos). `metadata` viaja en la sesión y es lo único que
+// el webhook tiene para saber a qué pago corresponde cuando Stripe lo confirme.
+async function crearCheckoutSession({ descripcion, monto, metadata, urlExito, urlCancelado }) {
+  if (config.simulate.stripe) {
+    console.info(`[SIMULA Stripe] checkout $${monto} MXN — ${descripcion}`);
+    return { ok: true, simulado: true, url: null, sessionId: `simulado_${Date.now()}` };
+  }
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: config.stripe.currency,
+          unit_amount: Math.round(monto * 100),
+          product_data: { name: descripcion },
+        },
+        quantity: 1,
+      }],
+      metadata,
+      success_url: urlExito,
+      cancel_url: urlCancelado,
+    });
+    return { ok: true, simulado: false, url: session.url, sessionId: session.id };
+  } catch (err) {
+    return { ok: false, error: `Stripe: ${err.message}` };
+  }
+}
+
+// Verifica la firma del webhook con el secreto de Stripe. `rawBody` debe ser el
+// cuerpo SIN parsear (Buffer) — ver el middleware express.raw() en server.js.
+// En modo simulación (o si no hay STRIPE_WEBHOOK_SECRET) no hay firma real que
+// verificar: se confía en el cuerpo tal cual, solo para pruebas locales.
+function verificarEventoStripe(rawBody, firma) {
+  if (config.simulate.stripe || !config.stripe.webhookSecret) {
+    return JSON.parse(rawBody.toString());
+  }
+  return getStripe().webhooks.constructEvent(rawBody, firma, config.stripe.webhookSecret);
+}
+
+module.exports = { sendWhatsAppTemplate, sendEmail, syncProspecto, crearCheckoutSession, verificarEventoStripe };

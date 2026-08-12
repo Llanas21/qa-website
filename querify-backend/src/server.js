@@ -17,6 +17,10 @@ app.set('trust proxy', 1); // detrás de proxy (Railway/Render) para cookies seg
 // CORS: si defines CORS_ORIGINS se restringe a esos; si no, se refleja el origen.
 app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
 
+// El webhook de Stripe necesita el cuerpo SIN parsear (Buffer) para verificar la
+// firma — por eso este middleware va antes de express.json() y solo para esa ruta.
+app.use('/webhook/stripe', express.raw({ type: 'application/json' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(session({
@@ -47,11 +51,11 @@ if (config.staticDir) {
 async function initDb() {
   const schema = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
   await query(schema);
-  const { rows } = await query(`SELECT COUNT(*)::int AS n FROM fechas_inicio`);
+  const { rows } = await query(`SELECT COUNT(*)::int AS n FROM cohortes`);
   if (rows[0].n === 0) {
     const seed = fs.readFileSync(path.join(__dirname, '..', 'db', 'seed.sql'), 'utf8');
     await query(seed);
-    console.info('[db] fechas_inicio sembradas (8 filas).');
+    console.info('[db] cohortes sembradas (8 filas).');
   }
   console.info('[db] esquema listo.');
 }
@@ -65,9 +69,10 @@ async function main() {
     process.exit(1);
   }
 
-  // Motor de la secuencia
+  // Motor de la secuencia de seguimiento + cobro de pagos 2-5 por vencer
   cron.schedule(config.seq.cron, () => {
     engine.correrSecuencia().catch(e => console.error('[cron]', e.message));
+    engine.revisarPagosPorVencer().catch(e => console.error('[cron pagos]', e.message));
   });
 
   const modo = Object.entries(config.simulate).filter(([, v]) => v).map(([k]) => k);

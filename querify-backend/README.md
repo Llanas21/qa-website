@@ -12,20 +12,21 @@ Funciona **sin credenciales en modo simulación**: puedes probar todo el flujo e
 - **Motor de secuencia (cron horario)** — a cada prospecto activo le manda: recordatorio a las **24 h**, mensaje de valor a las **72 h** (con la próxima fecha de inicio) y cierre suave a los **7 días**. Luego finaliza.
 - **Webhook de WhatsApp** — si el prospecto responde por WhatsApp, la secuencia se **detiene automáticamente**.
 - **Canal con respaldo** — WhatsApp principal; si no dejó WhatsApp, todo va por correo; si un WhatsApp falla y hay correo, se reintenta por correo.
-- **Panel `/admin`** — lista con filtros, detalle con timeline y botones (marcar como respondió / pausar), sección de errores de envío y edición de fechas de inicio.
+- **Apartado de lugar con pago real (Stripe)** — `POST /api/inscripcion` valida cupo de la cohorte y crea una Checkout Session de $500 MXN (pago 1/5). Al confirmarse por webhook, se crea el alumno, se generan los 5 pagos programados (semanas 0/2/4/6/8) y se ocupa el cupo. Los pagos 2-5 los cobra el mismo cron: genera su link de Stripe y lo manda por WhatsApp→correo cerca del vencimiento.
+- **Panel `/admin`** — prospectos (lista con filtros, detalle con timeline, marcar como respondió/pausar), **alumnos** (plan de pagos por alumno, marcar pago como pagado manualmente), **cohortes** (fecha de inicio y cupo por curso × modalidad) y errores de envío.
 
 ## Estructura
 
 ```
 querify-backend/
-├─ db/schema.sql        Tablas (prospectos, mensajes, fechas_inicio)
-├─ db/seed.sql          Las 8 fechas de inicio (curso × modalidad)
+├─ db/schema.sql        Tablas (prospectos, mensajes, cohortes, alumnos, pagos)
+├─ db/seed.sql          Las 8 cohortes iniciales (curso × modalidad, sin fecha)
 ├─ src/db.js            Config (.env) + conexión a Postgres + flags de simulación
-├─ src/templates.js     Las 4 plantillas de mensajes (texto + params de Meta)
-├─ src/providers.js     WhatsApp (Meta), correo (Microsoft Graph), sync (Graph) — con simulación
-├─ src/engine.js        Canal, deduplicado, alta de prospecto y motor de secuencia
-├─ src/routes.js        POST /api/leads  +  webhook de WhatsApp
-├─ src/admin.js         Panel de administración
+├─ src/templates.js     Plantillas de mensajes, incl. la liga de pago (texto + params de Meta)
+├─ src/providers.js     WhatsApp (Meta), correo (Microsoft Graph), sync (Graph), Stripe — con simulación
+├─ src/engine.js        Canal, deduplicado, alta de prospecto, motor de secuencia, inscripción y pagos
+├─ src/routes.js        POST /api/leads, /api/cohortes/:curso, /api/inscripcion + webhooks (WhatsApp, Stripe)
+├─ src/admin.js         Panel de administración (prospectos, alumnos, cohortes, errores)
 ├─ src/server.js        Arranque (Express, cron, init de la base)
 └─ scripts/             hash-password.js · db-init.js
 ```
@@ -120,6 +121,21 @@ El correo se envía mediante `POST /users/{buzón}/sendMail` de **Microsoft Grap
 
 ### Bitácora en Excel/SharePoint (opcional)
 Usa la misma app de Graph de arriba (con el permiso `Files.ReadWrite.All`). Crea un `.xlsx` en SharePoint con una **tabla** llamada `Prospectos`, y llena `GRAPH_DRIVE_ID`, `GRAPH_WORKBOOK_ITEM_ID` y `GRAPH_TABLE_NAME` en `.env`. Si dejas estas variables vacías, la sincronización simplemente se omite (no bloquea nada).
+
+### Pagos (Stripe)
+
+Sin `STRIPE_SECRET_KEY`, la inscripción corre en modo simulación: `/api/inscripcion` crea al alumno de inmediato (como si el pago 1 ya estuviera confirmado) y los recordatorios de los pagos 2-5 quedan marcados "simulado" en el timeline del alumno — se marcan como pagados a mano desde `/admin/alumnos` (botón "Marcar pagado", método `manual`), útil también para cuando alguien transfiere fuera de Stripe en producción.
+
+Para activar los pagos reales:
+
+1. Crea una cuenta en [Stripe](https://dashboard.stripe.com/register) (o usa una existente). Para probar sin dinero real, mantente en modo **Test** (interruptor arriba a la derecha del dashboard).
+2. **Llaves de API**: Dashboard → **Desarrolladores** → **Claves de API**. Copia la **clave secreta** → `STRIPE_SECRET_KEY`.
+3. **Webhook**: Dashboard → **Desarrolladores** → **Webhooks** → **Agregar endpoint**. URL: `https://tu-backend/webhook/stripe`. Evento a escuchar: `checkout.session.completed`. Copia el **secreto de firma** (`whsec_...`) → `STRIPE_WEBHOOK_SECRET`.
+4. En `.env`: llena `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CURRENCY` (default `mxn`) y `PAGO_MONTO_MXN` (default `500`). Pon `PUBLIC_BASE_URL` con el dominio real del backend (se usa para las URLs de éxito/cancelado cuando el cron cobra los pagos 2-5, donde no hay una petición HTTP de la que derivarlas).
+5. **Probar el webhook en local** (antes de desplegar): con el [Stripe CLI](https://stripe.com/docs/stripe-cli), `stripe listen --forward-to localhost:3000/webhook/stripe` — te da un `whsec_...` temporal para tu `.env` local.
+6. (Opcional) Da de alta la plantilla de WhatsApp `TPL_PAGO` (contenido en `src/templates.js`) para que el link de pago de los pagos 2-5 se pueda mandar por WhatsApp además de correo.
+
+> Nota: al confirmarse un pago vía webhook, si dos personas pagan casi al mismo tiempo por el último lugar de una cohorte, `lugares_ocupados` puede superar `cupo_maximo` por 1 en ese caso extremo — se prefiere honrar un pago ya recibido a rechazarlo. Revísalo manualmente si llega a pasar (poco probable con cupos de 10).
 
 ---
 

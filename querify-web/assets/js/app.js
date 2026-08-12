@@ -24,9 +24,14 @@ const PHONE_LEN = {
   "+503":[8, 8]      // El Salvador
 };
 
+/* Endpoint de la inscripción con pago (apartar lugar). Mismo backend que LEADS_ENDPOINT. */
+const COHORTES_ENDPOINT = "/api/cohortes"; // + "/" + curso
+const INSCRIPCION_ENDPOINT = "/api/inscripcion";
+
 document.addEventListener("DOMContentLoaded", () => {
   initMobileNav();
   initLeadForm();
+  initInscripcionForm();
   setYear();
 });
 
@@ -156,6 +161,149 @@ function initLeadForm() {
       console.warn("[Querify] No se pudo contactar el backend, se continúa el flujo:", err);
     } finally {
       window.location.href = form.dataset.gracias || GRACIAS_URL;
+    }
+  });
+}
+
+/* ---------------- Inscripción con pago (apartar lugar) ---------------- */
+function initInscripcionForm() {
+  const form = document.getElementById("inscripcion-form");
+  if (!form) return;
+
+  const cursoSelect  = document.getElementById("insc-curso");
+  const cohortesBox  = document.getElementById("insc-cohortes");
+  // Vive fuera de <form> (su propia tarjeta lateral), por eso se busca en el documento.
+  const cohorteErr   = document.querySelector('[data-error="cohorte"]');
+  const generalErr   = form.querySelector('[data-error="general"]');
+  const contactErr   = form.querySelector('[data-error="contacto"]');
+
+  const nameField  = form.querySelector('[data-field="nombre"]');
+  const phoneField = form.querySelector('[data-field="whatsapp"]');
+  const mailField  = form.querySelector('[data-field="correo"]');
+  const nameInput  = document.getElementById("i-nombre");
+  const ccSelect   = document.getElementById("i-cc");
+  const phoneInput = document.getElementById("i-whatsapp");
+  const mailInput  = document.getElementById("i-correo");
+  const honeypot   = document.getElementById("i-empresa");
+  const submitBtn  = form.querySelector('[type="submit"]');
+
+  // Preselecciona el curso si viene por la URL (?curso=Excel), p. ej. desde
+  // el botón "Apartar mi lugar" de cada página de curso.
+  const cursoInicial = new URLSearchParams(location.search).get("curso");
+  if (cursoInicial && [...cursoSelect.options].some(o => o.value === cursoInicial)) {
+    cursoSelect.value = cursoInicial;
+  }
+
+  const labelModalidad = m => m === "entre_semana" ? "Entre semana" : "Sábado";
+  const fmtFecha = f => new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+
+  async function cargarCohortes() {
+    clearError(cohorteErr);
+    cohortesBox.innerHTML = '<p class="sub" style="margin:0">Cargando fechas disponibles…</p>';
+    try {
+      const res = await fetch(`${COHORTES_ENDPOINT}/${encodeURIComponent(cursoSelect.value)}`);
+      const data = await res.json();
+      const cohortes = (data && data.cohortes) || [];
+      if (!cohortes.length) {
+        cohortesBox.innerHTML = '<p class="sub" style="margin:0">No hay fechas disponibles por ahora para este curso. Escríbenos por WhatsApp y te avisamos en cuanto se abra un grupo.</p>';
+        return;
+      }
+      cohortesBox.innerHTML = cohortes.map((c, i) => `
+        <label class="cohorte-opt">
+          <input type="radio" name="cohorte" value="${c.id}" ${i === 0 ? "checked" : ""}>
+          <span class="co-main"><b>${labelModalidad(c.modalidad)}</b><span>${fmtFecha(c.fecha_inicio)}</span></span>
+          <span class="co-cupo">${c.lugares_disponibles} lugar${c.lugares_disponibles === 1 ? "" : "es"}</span>
+        </label>`).join("");
+    } catch (err) {
+      cohortesBox.innerHTML = '<p class="sub" style="margin:0">No se pudieron cargar las fechas. Recarga la página o escríbenos por WhatsApp.</p>';
+    }
+  }
+
+  cursoSelect.addEventListener("change", cargarCohortes);
+  cargarCohortes();
+
+  phoneInput.addEventListener("input", () => {
+    phoneInput.value = phoneInput.value.replace(/\D/g, "");
+    clearError(phoneField); clearError(contactErr);
+  });
+  nameInput.addEventListener("input", () => clearError(nameField));
+  mailInput.addEventListener("input", () => { clearError(mailField); clearError(contactErr); });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (honeypot && honeypot.value.trim() !== "") return;
+
+    let ok = true;
+    const nombre = nameInput.value.trim();
+    const correo = mailInput.value.trim();
+    const tel    = phoneInput.value.trim();
+    const cc     = ccSelect.value;
+
+    if (nombre.length < 2) { setError(nameField, "Escribe tu nombre."); ok = false; }
+
+    let mailOk = false;
+    if (correo !== "") {
+      mailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
+      if (!mailOk) { setError(mailField, "Revisa el formato del correo."); ok = false; }
+    }
+
+    let phoneOk = false;
+    if (tel !== "") {
+      const [min, max] = PHONE_LEN[cc] || [7, 15];
+      phoneOk = tel.length >= min && tel.length <= max;
+      if (!phoneOk) { setError(phoneField, `El número debe tener ${min === max ? min : min + " a " + max} dígitos.`); ok = false; }
+    }
+
+    if (!(phoneOk || (mailOk && correo !== "")) && tel === "" && correo === "") {
+      setError(contactErr, "Déjanos tu WhatsApp o tu correo — al menos uno.");
+      ok = false;
+    }
+
+    // Los radios de cohorte viven fuera de <form> (su propia tarjeta lateral),
+    // igual que cohorteErr — por eso se buscan en el documento, no en el form.
+    const cohorteInput = document.querySelector('input[name="cohorte"]:checked');
+    if (!cohorteInput) { setError(cohorteErr, "Elige una fecha de inicio."); ok = false; }
+
+    if (!ok) {
+      const firstErr = form.querySelector(".invalid") || cohorteErr;
+      if (firstErr) firstErr.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    clearError(generalErr);
+    const payload = {
+      nombre,
+      curso: cursoSelect.value,
+      cohorteId: Number(cohorteInput.value),
+      whatsapp: tel ? { pais: cc, numero: tel } : null,
+      correo: correo || null,
+      origen: "sitio_web",
+    };
+
+    submitBtn.disabled = true;
+    const label = submitBtn.textContent;
+    submitBtn.textContent = "Redirigiendo a pago seguro…";
+
+    // A diferencia del formulario de contacto (fire-and-forget), aquí SÍ se
+    // espera la respuesta: se necesita la URL real de Stripe (o el motivo de
+    // error, p. ej. "sin cupo") antes de poder continuar.
+    try {
+      const res = await fetch(INSCRIPCION_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) {
+        setError(generalErr, data.error || "No se pudo iniciar la inscripción. Intenta de nuevo.");
+        submitBtn.disabled = false; submitBtn.textContent = label;
+        return;
+      }
+      window.location.href = data.simulado ? data.redirect : data.url;
+    } catch (err) {
+      setError(generalErr, "No pudimos conectar con el servidor. Revisa tu conexión e intenta de nuevo.");
+      submitBtn.disabled = false; submitBtn.textContent = label;
     }
   });
 }

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aparta tu lugar — Querify Analytics</title>
+<meta name="description" content="Elige tu curso, tu fecha de inicio y aparta tu lugar con el primer pago de $500 MXN. Cupo limitado a 10 alumnos por grupo.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/styles.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="container bar">
+    <a class="brand" href="../index.html" aria-label="Querify Analytics — inicio"><svg class="glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="#0E1B30" stroke="#2A4E86"/><rect x="7" y="19" width="6" height="6" rx="1.5" fill="#2563EB"/><rect x="7" y="12" width="12" height="4" rx="1.5" fill="#3B82F6"/><rect x="7" y="7" width="9" height="3" rx="1.5" fill="#93C5FD"/><circle cx="23" cy="22" r="3.4" stroke="#2563EB" stroke-width="1.8"/><line x1="25.4" y1="24.4" x2="27.5" y2="26.5" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="wordmark">Querify<b>.</b><span class="tag">Analytics</span></span></a>
+    <nav class="nav" id="primary-nav" aria-label="Navegación principal">
+      <a href="../index.html#cursos">Cursos</a>
+      <a href="../index.html#metodo">Cómo funciona</a>
+      <a href="../index.html#testimonios">Testimonios</a>
+    </nav>
+    <div class="nav-cta">
+      <button class="nav-toggle" aria-label="Abrir menú" aria-expanded="false" aria-controls="primary-nav">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="course-hero">
+    <div class="container ch-in">
+      <nav class="crumbs" aria-label="Ruta de navegación">
+        <a href="../index.html">Inicio</a> <span>/</span> <span>Apartar mi lugar</span>
+      </nav>
+      <span class="badge-live"><span class="pulse"></span>Cupo limitado a 10 alumnos por grupo</span>
+      <h1>Aparta tu lugar</h1>
+      <p class="lede">Elige tu curso y tu fecha de inicio, y aparta tu lugar con el primer pago de $500 MXN mediante Stripe (pago seguro con tarjeta). Los otros 4 pagos se cobran automáticamente cada 2 semanas.</p>
+    </div>
+  </section>
+
+  <section class="course-body">
+    <div class="container course-cols">
+      <div>
+        <div class="temario-head">
+          <span class="eyebrow">Plan de pagos</span>
+          <h2>$2,500 MXN en 5 pagos de $500</h2>
+          <p>El primer pago aparta tu lugar. Los siguientes 4 se cobran cada 2 semanas a partir del inicio del curso — te llega una liga de pago segura por WhatsApp (o correo) unos días antes de cada vencimiento.</p>
+        </div>
+        <div class="plan-pagos">
+          <div class="pago-row"><span class="pago-num">1</span><div><b>Al apartar tu lugar</b><p>Semana 0 — asegura tu cupo en el grupo</p></div><span class="pago-monto">$500</span></div>
+          <div class="pago-row"><span class="pago-num">2</span><div><b>Segundo pago</b><p>Semana 2 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+          <div class="pago-row"><span class="pago-num">3</span><div><b>Tercer pago</b><p>Semana 4 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+          <div class="pago-row"><span class="pago-num">4</span><div><b>Cuarto pago</b><p>Semana 6 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+          <div class="pago-row"><span class="pago-num">5</span><div><b>Quinto pago</b><p>Semana 8 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+        </div>
+
+        <div class="cert" style="margin-top:20px">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M9 14l-1.5 7L12 18l4.5 3L15 14"/></svg>
+          <div><b>¿Cómo se cobran los pagos 2 a 5?</b><p>Te llega una liga de pago de Stripe por WhatsApp (o correo) cerca de cada fecha de vencimiento. Pagas en un clic, sin volver a llenar tus datos. Si prefieres transferir directamente, también puedes avisarnos y lo registramos manualmente.</p></div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <div class="side-card">
+          <h5 class="mono-label">Curso</h5>
+          <select class="select" id="insc-curso">
+            <option value="Excel">Excel</option>
+            <option value="SQL Server">SQL Server</option>
+            <option value="Power BI">Power BI</option>
+            <option value="Python">Python</option>
+          </select>
+        </div>
+
+        <div class="side-card">
+          <h5 class="mono-label">Fecha de inicio</h5>
+          <div id="insc-cohortes" class="cohortes-list"><p class="sub" style="margin:0">Cargando fechas disponibles…</p></div>
+          <p class="err-msg" data-error="cohorte" style="margin-top:10px"></p>
+        </div>
+
+        <div class="side-card form-card" style="box-shadow:none">
+          <h3>Tus datos</h3>
+          <p class="sub">Para confirmar tu apartado y avisarte de los siguientes pagos.</p>
+          <form id="inscripcion-form" novalidate>
+            <div class="hp" aria-hidden="true">
+              <label for="i-empresa">No llenar este campo</label>
+              <input type="text" id="i-empresa" name="empresa" tabindex="-1" autocomplete="off">
+            </div>
+            <div class="field" data-field="nombre">
+              <label for="i-nombre">Nombre <span class="req">*</span></label>
+              <input class="input" type="text" id="i-nombre" placeholder="Tu nombre" autocomplete="name" required>
+              <p class="err-msg"></p>
+            </div>
+            <div class="field" data-field="whatsapp">
+              <label for="i-whatsapp">WhatsApp <span class="opt">— WhatsApp o correo</span></label>
+              <div class="phone-row">
+                <select class="select" id="i-cc" aria-label="Código de país">
+                  <option value="+52" selected>🇲🇽 +52</option><option value="+1">🇺🇸 +1</option>
+                  <option value="+34">🇪🇸 +34</option><option value="+54">🇦🇷 +54</option>
+                  <option value="+57">🇨🇴 +57</option><option value="+56">🇨🇱 +56</option>
+                  <option value="+51">🇵🇪 +51</option><option value="+593">🇪🇨 +593</option>
+                  <option value="+502">🇬🇹 +502</option><option value="+503">🇸🇻 +503</option>
+                </select>
+                <input class="input" type="tel" inputmode="numeric" id="i-whatsapp" placeholder="10 dígitos" autocomplete="tel-national">
+              </div>
+              <p class="err-msg"></p>
+            </div>
+            <div class="field" data-field="correo">
+              <label for="i-correo">Correo <span class="opt">— WhatsApp o correo</span></label>
+              <input class="input" type="email" id="i-correo" placeholder="tucorreo@ejemplo.com" autocomplete="email">
+              <p class="err-msg"></p>
+            </div>
+            <p class="err-msg" data-error="contacto" style="margin:-6px 0 14px"></p>
+            <p class="err-msg" data-error="general" style="margin:-6px 0 14px"></p>
+            <button class="btn btn-primary btn-lg btn-block" type="submit">Continuar al pago — $500 MXN</button>
+            <p class="form-note">Pago procesado de forma segura por Stripe. Tu lugar se aparta al confirmarse el pago.</p>
+          </form>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="../index.html" aria-label="Querify Analytics — inicio"><svg class="glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="#0E1B30" stroke="#2A4E86"/><rect x="7" y="19" width="6" height="6" rx="1.5" fill="#2563EB"/><rect x="7" y="12" width="12" height="4" rx="1.5" fill="#3B82F6"/><rect x="7" y="7" width="9" height="3" rx="1.5" fill="#93C5FD"/><circle cx="23" cy="22" r="3.4" stroke="#2563EB" stroke-width="1.8"/><line x1="25.4" y1="24.4" x2="27.5" y2="26.5" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span class="wordmark">Querify<b>.</b><span class="tag">Analytics</span></span></a>
+        <p>Academia de análisis de datos. Cursos en vivo de Excel, SQL Server, Power BI y Python, de cero a experto.</p>
+        <div class="socials">
+          <a href="https://instagram.com/querify_analytics" target="_blank" rel="noopener" aria-label="Instagram">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c2.7 0 3 0 4.1.1 1 0 1.7.2 2.3.5.6.2 1.1.5 1.6 1s.8 1 1 1.6c.3.6.4 1.3.5 2.3.1 1.1.1 1.4.1 4.1s0 3-.1 4.1c0 1-.2 1.7-.5 2.3-.2.6-.5 1.1-1 1.6s-1 .8-1.6 1c-.6.3-1.3.4-2.3.5-1.1.1-1.4.1-4.1.1s-3 0-4.1-.1c-1 0-1.7-.2-2.3-.5-.6-.2-1.1-.5-1.6-1s-.8-1-1-1.6c-.3-.6-.4-1.3-.5-2.3C2 15 2 14.7 2 12s0-3 .1-4.1c0-1 .2-1.7.5-2.3.2-.6.5-1.1 1-1.6s1-.8 1.6-1c.6-.3 1.3-.4 2.3-.5C9 2 9.3 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 8.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4zM17.4 5.6a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Cursos</h5>
+        <a href="excel.html">Excel</a><a href="sql-server.html">SQL Server</a>
+        <a href="power-bi.html">Power BI</a><a href="python.html">Python</a>
+      </div>
+      <div class="footer-col">
+        <h5>Contacto</h5>
+        <a href="https://instagram.com/querify_analytics" target="_blank" rel="noopener">@querify_analytics</a>
+        <a href="tel:+528441595050">844 159 5050</a>
+        <a href="tel:+528443553789">844 355 3789</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="mono">© <span data-year>2026</span> Querify Analytics</span>
+      <span class="mono">Hecho en México · análisis de datos</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/js/app.js" defer></script>
+</body>
+</html>

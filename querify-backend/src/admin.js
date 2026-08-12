@@ -18,8 +18,9 @@ function layout(title, body, { nav = true } = {}) {
       <span class="brand">Querify · Admin</span>
       <div class="links">
         <a href="/admin">Prospectos</a>
+        <a href="/admin/alumnos">Alumnos</a>
+        <a href="/admin/cohortes">Cohortes</a>
         <a href="/admin/errores">Errores de envío</a>
-        <a href="/admin/fechas">Fechas de inicio</a>
         <a href="/admin/logout" class="out">Salir</a>
       </div></nav>` : '';
   return `<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8">
@@ -202,32 +203,139 @@ router.get('/errores', requireAuth, async (req, res) => {
   res.send(layout('Errores de envío', `<h1>Errores de envío</h1><p class="sub">Fallos de WhatsApp o correo, para no perder prospectos por fallas silenciosas.</p>${tabla}`));
 });
 
-/* ------------------------------ fechas de inicio ------------------------------ */
-router.get('/fechas', requireAuth, async (req, res) => {
-  const { rows } = await query(`SELECT * FROM fechas_inicio ORDER BY curso, modalidad`);
-  const label = m => m === 'entre_semana' ? 'Entre semana' : 'Sabatino';
+/* ------------------------------ cohortes ------------------------------ */
+// Reemplaza a la antigua vista de "fechas de inicio": además de la fecha,
+// aquí se administra el cupo por cohorte (10 alumnos por default) y se dan
+// de alta nuevas generaciones cuando una cohorte se llena o termina.
+const label = m => m === 'entre_semana' ? 'Entre semana' : 'Sabatino';
+
+router.get('/cohortes', requireAuth, async (req, res) => {
+  const { rows } = await query(`SELECT * FROM cohortes ORDER BY curso, fecha_inicio NULLS LAST, modalidad`);
+  const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python'];
+
   const filas = rows.map(r => `<tr>
       <td>${esc(r.curso)}</td><td>${label(r.modalidad)}</td>
-      <td><input type="date" name="fecha_${r.id}" value="${r.fecha ? new Date(r.fecha).toISOString().slice(0, 10) : ''}"></td>
+      <td><input type="date" name="fecha_${r.id}" value="${r.fecha_inicio ? new Date(r.fecha_inicio).toISOString().slice(0, 10) : ''}"></td>
+      <td><input type="text" inputmode="numeric" style="width:70px" name="cupo_${r.id}" value="${r.cupo_maximo}"></td>
+      <td class="pill">${r.lugares_ocupados} / ${r.cupo_maximo} ocupados</td>
     </tr>`).join('');
-  res.send(layout('Fechas de inicio', `
-    <h1>Fechas de inicio</h1>
-    <p class="sub">Actualiza la próxima fecha de inicio por curso y modalidad. El mensaje de valor (72h) toma automáticamente la fecha futura más cercana del curso.</p>
-    <form method="post" action="/admin/fechas"><table>
-      <thead><tr><th>Curso</th><th>Modalidad</th><th>Próxima fecha de inicio</th></tr></thead>
+
+  res.send(layout('Cohortes', `
+    <h1>Cohortes</h1>
+    <p class="sub">Cada fila es una generación de un curso (curso + modalidad + fecha de inicio). El mensaje de "valor" (72h) toma automáticamente la cohorte futura más cercana del curso; el sitio solo muestra cohortes con cupo disponible.</p>
+    <form method="post" action="/admin/cohortes"><table>
+      <thead><tr><th>Curso</th><th>Modalidad</th><th>Fecha de inicio</th><th>Cupo máximo</th><th>Ocupación</th></tr></thead>
       <tbody>${filas}</tbody></table>
-      <div style="margin-top:16px"><button class="btn" type="submit">Guardar fechas</button>
+      <div style="margin-top:16px"><button class="btn" type="submit">Guardar cambios</button>
       ${req.query.ok ? '<span class="pill" style="margin-left:12px;color:#8ff0c0">✓ Guardado</span>' : ''}</div>
-    </form>`));
+    </form>
+
+    <h2>Nueva cohorte</h2>
+    <div class="card">
+      <form method="post" action="/admin/cohortes/nueva" class="filters">
+        <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+        <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select>
+        <input type="date" name="fecha_inicio" required>
+        <input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10" style="width:80px">
+        <button class="btn ghost" type="submit">Agregar cohorte</button>
+      </form>
+    </div>`));
 });
 
-router.post('/fechas', requireAuth, async (req, res) => {
-  for (const [key, val] of Object.entries(req.body || {})) {
-    const m = key.match(/^fecha_(\d+)$/);
-    if (!m) continue;
-    await query(`UPDATE fechas_inicio SET fecha = $2 WHERE id = $1`, [m[1], val || null]);
+router.post('/cohortes', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  for (const [key, val] of Object.entries(body)) {
+    const mFecha = key.match(/^fecha_(\d+)$/);
+    if (mFecha) { await query(`UPDATE cohortes SET fecha_inicio = $2 WHERE id = $1`, [mFecha[1], val || null]); continue; }
+    const mCupo = key.match(/^cupo_(\d+)$/);
+    if (mCupo) {
+      const cupo = parseInt(val, 10);
+      if (Number.isFinite(cupo) && cupo > 0) await query(`UPDATE cohortes SET cupo_maximo = $2 WHERE id = $1`, [mCupo[1], cupo]);
+    }
   }
-  res.redirect('/admin/fechas?ok=1');
+  res.redirect('/admin/cohortes?ok=1');
+});
+
+router.post('/cohortes/nueva', requireAuth, async (req, res) => {
+  const { curso, modalidad, fecha_inicio, cupo_maximo } = req.body || {};
+  const cupo = parseInt(cupo_maximo, 10) || 10;
+  if (curso && modalidad && fecha_inicio) {
+    await query(
+      `INSERT INTO cohortes (curso, modalidad, fecha_inicio, cupo_maximo) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (curso, modalidad, fecha_inicio) DO NOTHING`,
+      [curso, modalidad, fecha_inicio, cupo]);
+  }
+  res.redirect('/admin/cohortes?ok=1');
+});
+
+/* ------------------------------ alumnos y pagos ------------------------------ */
+router.get('/alumnos', requireAuth, async (req, res) => {
+  const { rows } = await query(`
+    SELECT a.*, c.curso, c.modalidad, c.fecha_inicio,
+           COUNT(p.*) FILTER (WHERE p.estado = 'pagado')  AS pagados,
+           COUNT(p.*) FILTER (WHERE p.estado = 'vencido')  AS vencidos
+    FROM alumnos a
+    JOIN cohortes c ON c.id = a.cohorte_id
+    LEFT JOIN pagos p ON p.alumno_id = a.id
+    GROUP BY a.id, c.curso, c.modalidad, c.fecha_inicio
+    ORDER BY a.fecha_alta DESC`);
+
+  const filas = rows.map(a => `<tr>
+      <td><a href="/admin/alumno/${a.id}"><b>${esc(a.nombre)}</b></a></td>
+      <td>${esc(a.curso)} <span class="pill">${label(a.modalidad)}</span></td>
+      <td class="pill">${a.fecha_inicio ? new Date(a.fecha_inicio).toLocaleDateString('es-MX') : '—'}</td>
+      <td>${a.pagados} / 5 pagados${a.vencidos > 0 ? ` <span class="tag" style="color:var(--bad);border-color:#5c1a1a">${a.vencidos} vencido(s)</span>` : ''}</td>
+      <td class="pill">${fmt(a.fecha_alta)}</td>
+    </tr>`).join('');
+
+  const tabla = rows.length ? `<table>
+    <thead><tr><th>Alumno</th><th>Curso</th><th>Inicio</th><th>Pagos</th><th>Alta</th></tr></thead>
+    <tbody>${filas}</tbody></table>` : '<div class="card empty">Aún no hay alumnos inscritos.</div>';
+
+  res.send(layout('Alumnos', `<h1>Alumnos</h1><p class="sub">${rows.length} inscrito(s). Se crean automáticamente al confirmarse el pago 1.</p>${tabla}`));
+});
+
+router.get('/alumno/:id', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    `SELECT a.*, c.curso, c.modalidad, c.fecha_inicio FROM alumnos a JOIN cohortes c ON c.id = a.cohorte_id WHERE a.id = $1`,
+    [req.params.id]);
+  const a = rows[0];
+  if (!a) return res.status(404).send(layout('No encontrado', '<a class="backlink" href="/admin/alumnos">← Alumnos</a><div class="card empty">Alumno no encontrado.</div>'));
+
+  const pagos = (await query(`SELECT * FROM pagos WHERE alumno_id = $1 ORDER BY numero_pago ASC`, [req.params.id])).rows;
+  const filasPago = pagos.map(p => `<tr>
+      <td>${p.numero_pago} / 5</td>
+      <td>$${Number(p.monto).toFixed(2)} MXN</td>
+      <td class="pill">${new Date(p.fecha_vencimiento).toLocaleDateString('es-MX')}</td>
+      <td><span class="tag ${p.estado === 'pagado' ? 'activa' : ''}" style="${p.estado === 'vencido' ? 'color:var(--bad);border-color:#5c1a1a' : ''}">${p.estado}</span></td>
+      <td class="pill">${p.fecha_pago ? fmt(p.fecha_pago) : '—'}${p.metodo ? ` (${p.metodo})` : ''}</td>
+      <td>${p.estado !== 'pagado' ? `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn ghost" type="submit">Marcar pagado</button></form>` : ''}</td>
+    </tr>`).join('');
+
+  const msgs = (await query(`SELECT * FROM mensajes WHERE alumno_id = $1 ORDER BY created_at ASC`, [req.params.id])).rows;
+  const tl = msgs.length ? `<ul class="timeline">${msgs.map(m => `<li class="${m.estado === 'fallido' ? 'fallido' : ''}">
+      <div class="meta">${fmt(m.created_at)} · ${esc(m.tipo)} · ${esc(m.canal)} <span class="st ${m.estado}">${m.estado}</span></div>
+      <div class="body">${esc(m.error ? '⚠ ' + m.error : m.contenido)}</div></li>`).join('')}</ul>`
+    : '<p class="sub">Sin mensajes todavía.</p>';
+
+  res.send(layout(a.nombre, `
+    <a class="backlink" href="/admin/alumnos">← Alumnos</a>
+    <h1>${esc(a.nombre)}</h1>
+    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${new Date(a.fecha_inicio).toLocaleDateString('es-MX')}</p>
+    <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
+      <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
+      <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
+      <div class="k">Prospecto de origen</div><div>${a.prospecto_id ? `<a href="/admin/prospecto/${a.prospecto_id}">#${a.prospecto_id}</a>` : '— (inscripción directa)'}</div>
+    </div></div>
+    <h2>Plan de pagos</h2>
+    <table><thead><tr><th>Pago</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th>Fecha de pago</th><th></th></tr></thead>
+      <tbody>${filasPago}</tbody></table>
+    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`));
+});
+
+router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {
+  await engine.confirmarPago({ pagoId: req.params.pagoId, metodo: 'manual' });
+  res.redirect(`/admin/alumno/${req.params.id}`);
 });
 
 module.exports = { router, requireAuth };
