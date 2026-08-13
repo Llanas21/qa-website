@@ -80,6 +80,15 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       apuntando también a Railway (ya no depende de la CLI de Stripe
       corriendo en local). Falta pasar a modo Live (ver pendientes abajo).
 
+**Nota (WhatsApp — número real vs. de prueba):** el número de prueba de
+Meta puede mandar la plantilla `hello_world` sin restricciones, pero un
+número real **no** — un número real solo puede mandar (a) una plantilla
+ya aprobada, o (b) texto libre dentro de la ventana de 24h después de que
+el cliente escriba primero (`hello_world` da el error `#131058` en un
+número real). Como las 5 plantillas siguen en PENDING (13 ago 2026), no
+hay forma de mandar nada desde el número real todavía sin que el cliente
+escriba primero — hay que esperar la aprobación de Meta.
+
 **Nota (WhatsApp):** la plantilla de bienvenida se llama
 `querify_bienvenida_v2` en Meta y en `TPL_BIENVENIDA`, no
 `querify_bienvenida` — un intento anterior dejó esa versión con contenido
