@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 10 de agosto de 2026
+Última actualización: 12 de agosto de 2026
 
 ## Qué es
 
@@ -63,10 +63,22 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       `/admin/alumnos` (plan de pagos, marcar pagado a mano). Corre en
       modo simulación sin credenciales de Stripe, igual que el resto del
       sistema.
-- [x] Stripe conectado en modo **Test** (llaves + webhook vía Stripe CLI
-      local) y WhatsApp conectado con número de prueba de Meta + token
-      permanente de un System User — probados de extremo a extremo en
-      local. Falta pasar ambos a modo real (ver pendientes abajo).
+- [x] **Desplegado en Railway**: proyecto `querify-analytics`, servicio
+      `querify-backend` (conectado al repo de GitHub, auto-deploy en cada
+      push a `main`) + plugin de Postgres administrado. URL pública:
+      `https://querify-backend-production.up.railway.app`. La raíz del
+      repo necesitó un `package.json` mínimo + `railway.json` (build/start
+      commands `cd querify-backend && npm ...`) porque el backend sirve
+      el sitio desde `../querify-web`, fuera de `querify-backend/` — sin
+      esto Railpack no detectaba el lenguaje del monorepo.
+- [x] **WhatsApp con número real** (ya no el de prueba): migrado desde la
+      app de WhatsApp Business vía Meta (Phone Number ID
+      `1191736867364483`). El token permanente (System User) y las 5
+      plantillas no cambiaron — están a nivel de cuenta, no de número.
+      Webhook apuntando al dominio de Railway.
+- [x] **Stripe conectado en modo Test**, webhook permanente creado por API
+      apuntando también a Railway (ya no depende de la CLI de Stripe
+      corriendo en local). Falta pasar a modo Live (ver pendientes abajo).
 
 **Nota (WhatsApp):** la plantilla de bienvenida se llama
 `querify_bienvenida_v2` en Meta y en `TPL_BIENVENIDA`, no
@@ -75,22 +87,30 @@ roto, y al borrarla Meta tardó más de lo normal en liberar el nombre para
 un reintento. No es necesario corregirlo, solo que no sorprenda el `_v2`
 al buscarla en WhatsApp Manager.
 
+**Nota (entorno local vs. producción):** a propósito, el `.env` local
+sigue apuntando al número de prueba de WhatsApp (Railway ya usa el real)
+— evita que una prueba en la laptop le mande algo real a un cliente. No
+sincronizar `WHATSAPP_PHONE_NUMBER_ID` entre ambos entornos.
+
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
-      en `/admin/cohortes`
-- [ ] Que Meta apruebe las 5 plantillas de WhatsApp (hoy en PENDING)
-- [ ] Migrar WhatsApp del número de prueba a tu número de negocio real
-      (requiere verificación del negocio en Meta Business Manager)
-- [ ] Migrar Stripe de modo Test a Live (llaves + webhook permanente —
-      hoy el webhook depende de la CLI de Stripe corriendo en local)
+      en `/admin/cohortes` (producción)
+- [ ] Que Meta apruebe las 5 plantillas de WhatsApp (hoy en PENDING) y el
+      nombre para mostrar del número real
+- [ ] Migrar Stripe de modo Test a Live (nuevas llaves `sk_live_...` +
+      nuevo webhook permanente para esas llaves)
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
       cualquier buzón del tenant)
-- [ ] Desplegar en Railway (o similar) con PostgreSQL en la nube — hoy
-      solo corre en la laptop
-- [ ] Dominio propio (opcional)
+- [ ] Dominio propio apuntando a Railway (opcional — hoy usa el
+      `*.up.railway.app` gratuito)
+- [ ] La sesión del panel `/admin` usa `MemoryStore` (advertencia de
+      Express en los logs de Railway): se pierde al reiniciar/redeploy y
+      no escala a más de una instancia. No es urgente para un solo admin
+      y una sola instancia, pero si crece, cambiar a un store persistente
+      (ej. `connect-pg-simple` contra el mismo Postgres)
 
 ## Decisiones ya tomadas — no reabrir sin razón concreta
 
@@ -132,6 +152,18 @@ Instrucciones completas en `querify-backend/README.md`. En resumen:
    `npm install`, `npm start`
 2. El backend sirve el sitio automáticamente si `STATIC_DIR=../querify-web`
 3. Sitio: `http://localhost:3000` — Panel: `http://localhost:3000/admin`
+
+## Producción (Railway)
+
+- Proyecto: `querify-analytics` (workspace de Railway de Jose Luis) —
+  servicios `querify-backend` (conectado al repo de GitHub, rama `main`,
+  auto-deploy en cada push) y `Postgres` (plugin administrado).
+- URL: `https://querify-backend-production.up.railway.app`
+- Variables de entorno: viven solo en Railway (`railway variable list
+  --service querify-backend`), no en este repo. Si cambias una llave o
+  credencial ahí, no lo olvides — el `.env` local es independiente.
+- Redeploy manual si el auto-deploy de GitHub no dispara:
+  `railway up --service querify-backend --ci` desde la raíz del repo.
 
 ## Cómo retomar este proyecto en el futuro (con Claude o con quien sea)
 
