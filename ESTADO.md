@@ -73,21 +73,39 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       esto Railpack no detectaba el lenguaje del monorepo.
 - [x] **WhatsApp con número real** (ya no el de prueba): migrado desde la
       app de WhatsApp Business vía Meta (Phone Number ID
-      `1191736867364483`). El token permanente (System User) y las 5
-      plantillas no cambiaron — están a nivel de cuenta, no de número.
-      Webhook apuntando al dominio de Railway.
+      `1191736867364483`, número `+52 1 844 347 2957`). El token
+      permanente (System User) sí sirve para ambas cuentas, pero **las
+      plantillas NO se compartieron** — ver nota abajo. Webhook apuntando
+      al dominio de Railway.
+- [x] **Las 5 plantillas ya están APPROVED** (14 ago 2026) — en ambas
+      WhatsApp Business Accounts (ver nota).
 - [x] **Stripe conectado en modo Test**, webhook permanente creado por API
       apuntando también a Railway (ya no depende de la CLI de Stripe
       corriendo en local). Falta pasar a modo Live (ver pendientes abajo).
+
+**Nota importante (dos WhatsApp Business Accounts distintas):** al migrar
+el número real, Meta creó una WABA **nueva** (`2271408477014264`,
+verified_name "Querify Analytics") en vez de meter el número real a la
+WABA original del número de prueba (`1041475812138605`). Las plantillas
+son por-WABA, no por-cuenta-de-Meta — así que **hubo que crear las 5
+plantillas por segunda vez** en la WABA nueva. Resultado:
+
+| | WABA prueba `1041475812138605` | WABA real `2271408477014264` |
+|---|---|---|
+| Número | `1256054337592814` (prueba) | `1191736867364483` (real) |
+| `TPL_BIENVENIDA` | `querify_bienvenida_v2` (el original quedó roto, ver nota de abajo) | `querify_bienvenida` (sin conflicto aquí) |
+| Las otras 4 plantillas | mismo nombre en ambas | mismo nombre en ambas |
+| Dónde se usa | `.env` local (a propósito) | Railway/producción |
+
+Si alguna vez hay que tocar plantillas de nuevo, recordar que son **dos
+cuentas separadas** — un cambio en una no se refleja en la otra.
 
 **Nota (WhatsApp — número real vs. de prueba):** el número de prueba de
 Meta puede mandar la plantilla `hello_world` sin restricciones, pero un
 número real **no** — un número real solo puede mandar (a) una plantilla
 ya aprobada, o (b) texto libre dentro de la ventana de 24h después de que
 el cliente escriba primero (`hello_world` da el error `#131058` en un
-número real). Como las 5 plantillas siguen en PENDING (13 ago 2026), no
-hay forma de mandar nada desde el número real todavía sin que el cliente
-escriba primero — hay que esperar la aprobación de Meta.
+número real).
 
 **Nota (WhatsApp):** la plantilla de bienvenida se llama
 `querify_bienvenida_v2` en Meta y en `TPL_BIENVENIDA`, no
