@@ -152,6 +152,18 @@ router.post('/webhook', async (req, res) => {
     const entries = req.body?.entry || [];
     for (const entry of entries) {
       for (const change of entry.changes || []) {
+        // Estatus de entrega de mensajes salientes (no viene por registrarMensaje
+        // porque el envío original no sabe su resultado final hasta este callback
+        // async de Meta). Solo se registra en consola/logs de Railway — sirve para
+        // detectar fallas silenciosas tipo "accepted" en la API pero nunca entregado
+        // (ej. WABA sin moneda configurada, plantilla rechazada después de aprobada, etc.)
+        for (const s of change.value?.statuses || []) {
+          if (s.status === 'failed') {
+            const err = s.errors?.[0];
+            console.error(`[webhook] mensaje ${s.id} FALLÓ para ${s.recipient_id}: ` +
+              `(#${err?.code}) ${err?.title || err?.message} — ${err?.error_data?.details || ''}`);
+          }
+        }
         const mensajes = change.value?.messages || [];
         for (const m of mensajes) {
           const from = (m.from || '').replace(/\D/g, '');
