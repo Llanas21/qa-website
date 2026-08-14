@@ -54,6 +54,15 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       Reutiliza la misma app de Entra ID que la bitácora a Excel/SharePoint.
       Código, `.env.example` y `README.md` ya actualizados.
 
+- [x] **Confirmación real al apartar lugar** (14 ago 2026, corregido): un
+      usuario probó el flujo completo en producción (pago real con
+      tarjeta de prueba) y nunca le llegó nada, aunque la pantalla de
+      gracias decía "te contactaremos por WhatsApp" — `confirmarInscripcion`
+      solo dejaba una nota interna, nunca mandaba nada de verdad. Ahora
+      manda la plantilla `inscripcion` (WhatsApp→correo, igual que el
+      resto del sistema). Nueva plantilla creada en ambas WABAs
+      (`TPL_INSCRIPCION`, default `querify_inscripcion`), en PENDING —
+      mientras se aprueba, cae a correo real automáticamente.
 - [x] Apartado de lugar con pago real (Stripe) y cupo limitado por cohorte:
       `POST /api/inscripcion` valida cupo y crea una Checkout Session de
       $500 MXN; el webhook confirma el pago 1, crea al alumno, genera el
