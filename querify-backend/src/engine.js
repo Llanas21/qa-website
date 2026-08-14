@@ -298,6 +298,17 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
     tipo: 'pago', canal: 'sistema', estado: 'nota',
     contenido: `Inscripción confirmada. Pago 1/5 recibido, lugar apartado en la cohorte #${cohorteId}.`,
   });
+
+  // Confirmación real al alumno (WhatsApp→correo, igual que el resto del
+  // sistema) — antes solo quedaba la nota interna de arriba y nunca se le
+  // avisaba de verdad que su lugar quedó apartado.
+  const vars = [alumno.nombre, cohorte.curso];
+  await enviarConVars({
+    pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
+    canal: alumno.whatsapp ? 'whatsapp' : 'correo', tipo: 'inscripcion', vars,
+    onLog: (m) => registrarMensajeAlumno(alumno.id, m),
+  });
+
   return alumno;
 }
 

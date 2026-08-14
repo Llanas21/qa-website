@@ -98,7 +98,7 @@ npm run hash -- "tu-contraseña-segura"
 
 ### WhatsApp (Meta Cloud API directa)
 1. Crea una app en Meta for Developers y agrega el producto **WhatsApp**. Obtén el **Phone Number ID** y un **token**.
-2. Da de alta las 4 **plantillas** (el contenido está en `src/templates.js`) en el idioma `es_MX`. Como mencionan precio/promoción, es probable que Meta las clasifique como **Marketing**.
+2. Da de alta las 6 **plantillas** (`bienvenida`, `recordatorio`, `valor`, `cierre`, `pago`, `inscripcion` — el contenido está en `src/templates.js`) en el idioma `es_MX`. Como algunas mencionan precio/promoción, es probable que Meta clasifique esas como **Marketing** y las demás como **Utility**.
 3. En `.env`: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, y los nombres `TPL_*` que hayas usado.
 4. Configura el **webhook** en Meta apuntando a `https://tu-backend/webhook`, con el `WHATSAPP_VERIFY_TOKEN` que pusiste, y suscríbete al campo `messages`.
 
@@ -133,7 +133,7 @@ Para activar los pagos reales:
 3. **Webhook**: Dashboard → **Desarrolladores** → **Webhooks** → **Agregar endpoint**. URL: `https://tu-backend/webhook/stripe`. Evento a escuchar: `checkout.session.completed`. Copia el **secreto de firma** (`whsec_...`) → `STRIPE_WEBHOOK_SECRET`.
 4. En `.env`: llena `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CURRENCY` (default `mxn`) y `PAGO_MONTO_MXN` (default `500`). Pon `PUBLIC_BASE_URL` con el dominio real del backend (se usa para las URLs de éxito/cancelado cuando el cron cobra los pagos 2-5, donde no hay una petición HTTP de la que derivarlas).
 5. **Probar el webhook en local** (antes de desplegar): con el [Stripe CLI](https://stripe.com/docs/stripe-cli), `stripe listen --forward-to localhost:3000/webhook/stripe` — te da un `whsec_...` temporal para tu `.env` local.
-6. (Opcional) Da de alta la plantilla de WhatsApp `TPL_PAGO` (contenido en `src/templates.js`) para que el link de pago de los pagos 2-5 se pueda mandar por WhatsApp además de correo.
+6. (Opcional) Da de alta las plantillas de WhatsApp `TPL_PAGO` (link de pago de los pagos 2-5) y `TPL_INSCRIPCION` (confirmación al apartar el lugar) — contenido en `src/templates.js` — para que se puedan mandar por WhatsApp además de correo.
 
 > Nota: al confirmarse un pago vía webhook, si dos personas pagan casi al mismo tiempo por el último lugar de una cohorte, `lugares_ocupados` puede superar `cupo_maximo` por 1 en ese caso extremo — se prefiere honrar un pago ya recibido a rechazarlo. Revísalo manualmente si llega a pasar (poco probable con cupos de 10).
 

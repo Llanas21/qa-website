@@ -26,6 +26,7 @@ const config = {
       valor: env('TPL_VALOR', 'querify_valor'),
       cierre: env('TPL_CIERRE', 'querify_cierre'),
       pago: env('TPL_PAGO', 'querify_pago'),
+      inscripcion: env('TPL_INSCRIPCION', 'querify_inscripcion'),
     },
   },
 

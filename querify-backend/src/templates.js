@@ -10,6 +10,7 @@ const asunto = {
   valor:       'Cupo limitado — curso de {{2}} en Querify Analytics',
   cierre:      'Seguimos aquí cuando estés listo — {{2}}',
   pago:        'Pago {{3}}/5 por vencer — curso de {{2}}',
+  inscripcion: '¡Tu lugar quedó apartado! — curso de {{2}}',
 };
 
 const cuerpo = {
@@ -43,10 +44,16 @@ El curso de {{2}} sigue disponible cuando estés listo — solo escríbeme y con
 🔗 Liga de pago segura (Stripe): {{5}}
 
 En cuanto lo confirmes, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌`,
+
+  inscripcion: `¡Hola {{1}}! 🎉 Tu lugar en el curso de {{2}} quedó apartado — recibimos tu primer pago de $500 MXN.
+
+En breve te contactamos con los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.
+
+¡Bienvenido a Querify Analytics! 🙌`,
 };
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
-const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5 };
+const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2 };
 
 // {{N}} genérico (antes solo soportaba {{1}}..{{3}}) para poder agregar la
 // plantilla de "pago" sin tocar el reemplazo de las 4 plantillas existentes.
