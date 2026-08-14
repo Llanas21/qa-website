@@ -79,30 +79,32 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       al dominio de Railway.
 - [x] **Las 5 plantillas ya están APPROVED en ambas WhatsApp Business
       Accounts** (14 ago 2026).
-- [ ] **WhatsApp del número real NO manda todavía** — ver nota abajo
-      ("Business eligibility payment issue"). La API responde
-      `"message_status":"accepted"` en todos los intentos, pero eso NO
-      significa entregado — solo confirma que Meta encoló la solicitud.
-      No dar por buena la respuesta de la API sin el webhook de status.
+- [x] **WhatsApp del número real ya manda de verdad** (14 ago 2026) —
+      confirmado con un envío entregado y visto en el teléfono, no solo
+      por el `200`/`"accepted"` de la API (eso solo confirma que Meta
+      encoló la solicitud, no que llegó — ver nota abajo). **WhatsApp en
+      producción queda 100% funcional.**
 - [x] **Stripe conectado en modo Test**, webhook permanente creado por API
       apuntando también a Railway (ya no depende de la CLI de Stripe
       corriendo en local). Falta pasar a modo Live (ver pendientes abajo).
 
-**Nota importante (WhatsApp real no manda — falta configurar moneda de
-cobro):** el número real (WABA `2271408477014264`) tiene todo lo demás
-listo (plantillas aprobadas, token, webhook) pero **todo envío falla
-silenciosamente** con `"Business eligibility payment issue"` (código
-`131042`): la WhatsApp Business Account no tiene moneda/forma de pago
-configurada, algo que Meta exige aunque el envío en sí sea gratis. Se
-descubrió porque el webhook de esa WABA tampoco estaba suscrito a
-nuestra app (`subscribed_apps` vacío — ya corregido con un `POST` a
-`/{waba-id}/subscribed_apps`), así que la falla nunca se vio hasta
-agregar un log temporal del payload de `statuses` y forzar un reenvío.
-**Para resolver:** entrar a
-`https://business.facebook.com/billing_hub/accounts/details/?business_id=4144000655911656&asset_id=2271408477014264&wizard_name=CHANGE_COUNTRY_CURRENCY&account_type=whatsapp-business-account`
-y configurar la moneda/forma de pago de esa cuenta. Después, reintentar
-el envío de prueba (`querify_bienvenida` a un número real) y confirmar
-por el webhook (no solo por el `200` de la API) que sí llega.
+**Nota importante (WhatsApp real no mandaba — resuelto, moneda de cobro
+sin configurar):** el número real (WABA `2271408477014264`) tenía todo
+lo demás listo (plantillas aprobadas, token, webhook) pero todo envío
+fallaba silenciosamente con `"Business eligibility payment issue"`
+(código `131042`): la WhatsApp Business Account no tenía moneda/forma de
+pago configurada, algo que Meta exige aunque el envío en sí sea gratis.
+Se descubrió porque el webhook de esa WABA tampoco estaba suscrito a
+nuestra app (`subscribed_apps` vacío — corregido con un `POST` a
+`/{waba-id}/subscribed_apps`, ese `POST` no hay que repetirlo), así que
+la falla nunca se vio hasta agregar un log temporal del payload de
+`statuses` y forzar un reenvío. **Se resolvió** agregando moneda y
+tarjeta en el billing hub de esa cuenta — el primer intento después de
+poner solo la moneda siguió fallando (mismo código, mensaje ligeramente
+distinto: "errors related to your payment method"), hizo falta también
+la tarjeta. `routes.js` ahora loguea permanentemente cualquier `status:
+'failed'` del webhook (con el código/detalle de Meta) para detectar esto
+más rápido si vuelve a pasar — no hace falta otro log temporal.
 
 **Nota importante (dos WhatsApp Business Accounts distintas):** al migrar
 el número real, Meta creó una WABA **nueva** (`2271408477014264`,
@@ -150,9 +152,6 @@ un bug, hay que verificar la cuenta en developers.facebook.com y
 reintentar después.
 
 **Pendiente para producción real:**
-- [ ] **Bloqueante:** configurar moneda/forma de pago de la WhatsApp
-      Business Account real (ver nota arriba) — sin esto ningún envío real
-      llega, aunque la API responda 200
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
       en `/admin/cohortes` (producción)
