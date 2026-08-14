@@ -152,8 +152,6 @@ router.post('/webhook', async (req, res) => {
     const entries = req.body?.entry || [];
     for (const entry of entries) {
       for (const change of entry.changes || []) {
-        // TEMP: diagnóstico de por qué un envío real no llegó — quitar después.
-        if (change.value?.statuses) console.info('[webhook DEBUG statuses]', JSON.stringify(change.value.statuses));
         const mensajes = change.value?.messages || [];
         for (const m of mensajes) {
           const from = (m.from || '').replace(/\D/g, '');
