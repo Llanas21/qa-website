@@ -77,8 +77,10 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       permanente (System User) sí sirve para ambas cuentas, pero **las
       plantillas NO se compartieron** — ver nota abajo. Webhook apuntando
       al dominio de Railway.
-- [x] **Las 5 plantillas ya están APPROVED** (14 ago 2026) — en ambas
-      WhatsApp Business Accounts (ver nota).
+- [x] **Las 5 plantillas ya están APPROVED en ambas WhatsApp Business
+      Accounts** (14 ago 2026) — confirmado con un envío real de
+      `querify_bienvenida` desde el número real (`+52 1 844 347 2957`),
+      entregado. **WhatsApp en producción queda 100% funcional.**
 - [x] **Stripe conectado en modo Test**, webhook permanente creado por API
       apuntando también a Railway (ya no depende de la CLI de Stripe
       corriendo en local). Falta pasar a modo Live (ver pendientes abajo).
@@ -119,12 +121,21 @@ sigue apuntando al número de prueba de WhatsApp (Railway ya usa el real)
 — evita que una prueba en la laptop le mande algo real a un cliente. No
 sincronizar `WHATSAPP_PHONE_NUMBER_ID` entre ambos entornos.
 
+**Nota (bloqueo temporal de la API de Meta, 13 ago 2026):** en medio de
+varias pruebas seguidas (crear/borrar/leer plantillas por API en poco
+tiempo), Meta bloqueó por completo la API para la app/token
+("`API access blocked`" en *cualquier* llamada, hasta las más básicas) por
+"actividad inusual" y pidió verificar la cuenta manualmente en el
+dashboard — se resolvió solo, sin tocar código. Si vuelve a pasar: no es
+un bug, hay que verificar la cuenta en developers.facebook.com y
+reintentar después.
+
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
       en `/admin/cohortes` (producción)
-- [ ] Que Meta apruebe las 5 plantillas de WhatsApp (hoy en PENDING) y el
-      nombre para mostrar del número real
+- [ ] Que Meta apruebe el nombre para mostrar del número real (separado
+      de la aprobación de plantillas)
 - [ ] Migrar Stripe de modo Test a Live (nuevas llaves `sk_live_...` +
       nuevo webhook permanente para esas llaves)
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
