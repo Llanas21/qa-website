@@ -185,8 +185,11 @@ reintentar después.
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
       en `/admin/cohortes` (producción)
-- [ ] Que Meta apruebe el nombre para mostrar del número real (separado
-      de la aprobación de plantillas)
+- [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
+      resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
+      "Querify Analytics" quedó activo sin necesitar revisión manual.
+      Número verificado (`code_verification_status: VERIFIED`) y calidad
+      **GREEN**. No era un bloqueante real, solo faltaba confirmarlo.
 - [ ] Migrar Stripe de modo Test a Live (nuevas llaves `sk_live_...` +
       nuevo webhook permanente para esas llaves)
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
