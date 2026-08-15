@@ -7,7 +7,7 @@
 <meta name="description" content="Academia de análisis de datos. Cursos en línea y en vivo de Excel, SQL Server, Power BI y Python por Microsoft Teams. De cero a experto, grupos de 10 y certificado con valor curricular.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="assets/img/querify-logo.svg">
 <link rel="stylesheet" href="assets/css/styles.css">
 </head>
@@ -18,13 +18,12 @@
   <div class="container bar">
     <a class="brand" href="index.html" aria-label="Querify Analytics — inicio">
       <img class="glyph" src="assets/img/querify-logo.svg" width="34" height="34" alt="Querify Analytics">
-      <span class="wordmark">Querify<b>.</b><span class="tag">Analytics</span></span>
+      <span class="wordmark">Querify<span class="tag">Analytics</span></span>
     </a>
 
     <nav class="nav" id="primary-nav" aria-label="Navegación principal">
       <a href="#cursos">Cursos</a>
       <a href="#metodo">Cómo funciona</a>
-      <a href="#testimonios">Testimonios</a>
       <a href="#contacto">Contacto</a>
     </nav>
 
@@ -57,26 +56,6 @@
           <span class="chip"><span class="dot"></span>30 h de práctica</span>
           <span class="chip"><span class="dot"></span>Grupos de 10</span>
           <span class="chip"><span class="dot"></span>Certificado incluido</span>
-        </div>
-      </div>
-
-      <!-- Firma: consola de resultados -->
-      <div class="console" role="img" aria-label="Consola que consulta la ruta de aprendizaje y devuelve los cuatro cursos disponibles.">
-        <div class="console-top">
-          <span class="tl"><i></i><i></i><i></i></span>
-          <span class="name">querify · consola</span>
-        </div>
-        <div class="console-body">
-          <div class="q-line"><span class="cm">-- tu ruta de aprendizaje</span></div>
-          <div class="q-line"><span class="kw">SELECT</span> ruta <span class="kw">FROM</span> analitica</div>
-          <div class="q-line">&nbsp;&nbsp;<span class="kw">WHERE</span> nivel = <span class="st">'cero_a_experto'</span>;<span class="q-caret" aria-hidden="true"></span></div>
-          <div class="result">
-            <div class="result-row"><span class="rl"><span class="code">EXCEL</span><span class="rt">Datos y reportes</span></span><span class="rv">30 h</span></div>
-            <div class="result-row"><span class="rl"><span class="code">SQL</span><span class="rt">Bases de datos</span></span><span class="rv">30 h</span></div>
-            <div class="result-row"><span class="rl"><span class="code">PBI</span><span class="rt">Dashboards</span></span><span class="rv">30 h</span></div>
-            <div class="result-row"><span class="rl"><span class="code">PY</span><span class="rt">Automatización</span></span><span class="rv">30 h</span></div>
-          </div>
-          <div class="q-line" style="margin-top:12px"><span class="cm">-- 4 filas · grupos de 10 alumnos</span></div>
         </div>
       </div>
     </div>
@@ -118,7 +97,7 @@
         <article class="course-card">
           <div class="cc-top">
             <span class="course-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+              <img src="assets/img/excel.svg" alt="" aria-hidden="true">
             </span>
             <span class="code">01 · XLS</span>
           </div>
@@ -133,7 +112,7 @@
         <article class="course-card">
           <div class="cc-top">
             <span class="course-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+              <img src="assets/img/sql-server.svg" alt="" aria-hidden="true">
             </span>
             <span class="code">02 · SQL</span>
           </div>
@@ -148,7 +127,7 @@
         <article class="course-card">
           <div class="cc-top">
             <span class="course-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18"/><rect x="5" y="11" width="3.5" height="7" rx="1"/><rect x="10.25" y="6" width="3.5" height="12" rx="1"/><rect x="15.5" y="9" width="3.5" height="9" rx="1"/></svg>
+              <img src="assets/img/power-bi.svg" alt="" aria-hidden="true">
             </span>
             <span class="code">03 · PBI</span>
           </div>
@@ -163,7 +142,7 @@
         <article class="course-card">
           <div class="cc-top">
             <span class="course-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l-5 6 5 6"/><path d="M16 6l5 6-5 6"/></svg>
+              <img src="assets/img/python.svg" alt="" aria-hidden="true">
             </span>
             <span class="code">04 · PY</span>
           </div>
@@ -205,14 +184,17 @@
     </div>
   </section>
 
-  <!-- ===================== TESTIMONIOS ===================== -->
+  <!-- ===================== TESTIMONIOS =====================
+       Oculta a propósito: todavía no hay testimonios reales de alumnos que
+       mostrar (los de abajo eran de ejemplo). Descomentar este bloque completo
+       cuando ya haya testimonios firmes — junto con el link "Testimonios" del
+       nav en este archivo y en cursos/*.html.
   <section class="section" id="testimonios">
     <div class="container">
       <div class="section-head">
         <span class="eyebrow">Testimonios</span>
         <h2>Lo que dicen quienes ya tomaron el curso</h2>
       </div>
-      <!-- PENDIENTE (Fase 3): reemplazar por los testimonios reales de tus alumnos. -->
       <div class="tst-grid">
         <figure class="tst">
           <blockquote class="quote">Llegué sin saber nada de bases de datos y salí haciendo mis propias consultas en el trabajo. Los grupos pequeños hacen toda la diferencia.</blockquote>
@@ -229,6 +211,7 @@
       </div>
     </div>
   </section>
+  -->
 
   <!-- ===================== FORMULARIO / CONTACTO ===================== -->
   <section class="lead" id="contacto">
@@ -272,7 +255,7 @@
           </div>
 
           <div class="field" data-field="whatsapp">
-            <label for="whatsapp">WhatsApp <span class="opt">— WhatsApp o correo</span></label>
+            <label for="whatsapp">WhatsApp <span class="opt">— o tu correo</span></label>
             <div class="phone-row">
               <select class="select" id="cc" name="cc" aria-label="Código de país">
                 <option value="+52" selected>🇲🇽 +52</option>
@@ -292,7 +275,7 @@
           </div>
 
           <div class="field" data-field="correo">
-            <label for="correo">Correo <span class="opt">— WhatsApp o correo</span></label>
+            <label for="correo">Correo <span class="opt">— o tu WhatsApp</span></label>
             <input class="input" type="email" id="correo" name="correo" placeholder="tucorreo@ejemplo.com" autocomplete="email">
             <p class="err-msg"></p>
           </div>
@@ -314,7 +297,7 @@
       <div class="footer-brand">
         <a class="brand" href="index.html" aria-label="Querify Analytics — inicio">
           <img class="glyph" src="assets/img/querify-logo.svg" width="34" height="34" alt="Querify Analytics">
-          <span class="wordmark">Querify<b>.</b><span class="tag">Analytics</span></span>
+          <span class="wordmark">Querify<span class="tag">Analytics</span></span>
         </a>
         <p>Academia de análisis de datos. Cursos en vivo de Excel, SQL Server, Power BI y Python, de cero a experto.</p>
         <!-- PENDIENTE (Fase 3): confirmar qué redes están activas realmente. -->

@@ -71,7 +71,12 @@ async function enviarConVars({ pais, numero, correo, canal, tipo, vars, onLog })
 // también en el cobro de pagos (ver enviarLinkPago), sin duplicar el canal WhatsApp→correo.
 async function enviar(p, tipo) {
   const fecha = tipo === 'valor' ? (await proximaFecha(p.curso)) || 'muy pronto' : '';
-  const vars = [p.nombre, p.curso, fecha];
+  // Las plantillas dicen literal "el curso de {{2}}" — con "Aún no decido"
+  // (el valor real que se guarda en prospectos.curso) se leería "el curso de
+  // Aún no decido". Solo para el texto del mensaje se usa un valor que sí
+  // encaja en esa frase; en la base y en /admin se sigue viendo "Aún no decido".
+  const cursoMsg = p.curso === 'Aún no decido' ? 'Análisis de Datos' : p.curso;
+  const vars = [p.nombre, cursoMsg, fecha];
   return enviarConVars({
     pais: p.telefono_pais, numero: p.telefono, correo: p.correo, canal: p.canal, tipo, vars,
     onLog: (m) => registrarMensaje(p.id, m),

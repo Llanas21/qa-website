@@ -89,7 +89,12 @@ router.post('/api/inscripcion', async (req, res) => {
 
   try {
     const origin = `${req.protocol}://${req.get('host')}`;
-    const urlExito = `${origin}/inscripcion-gracias.html?session_id={CHECKOUT_SESSION_ID}`;
+    // Mismo canal que decidirá enviarConVars() al confirmar el pago (WhatsApp
+    // si dejó número, si no correo) — se lo pasamos a la página de gracias por
+    // query string para que muestre el mensaje correcto ("te contactaremos por
+    // WhatsApp/correo"), ya que Stripe es quien redirige ahí, no nuestro JS.
+    const canal = telOk ? 'whatsapp' : 'correo';
+    const urlExito = `${origin}/inscripcion-gracias.html?session_id={CHECKOUT_SESSION_ID}&canal=${canal}`;
     const urlCancelado = `${origin}/cursos/inscripcion.html?curso=${encodeURIComponent(b.curso || '')}&cancelado=1`;
 
     const r = await engine.iniciarInscripcion({
@@ -107,7 +112,7 @@ router.post('/api/inscripcion', async (req, res) => {
       return res.status(502).json({ ok: false, error: 'No se pudo iniciar el pago. Intenta de nuevo en un momento.' });
     }
 
-    if (r.simulado) return res.json({ ok: true, simulado: true, redirect: '/inscripcion-gracias.html?simulado=1' });
+    if (r.simulado) return res.json({ ok: true, simulado: true, redirect: `/inscripcion-gracias.html?simulado=1&canal=${canal}` });
     res.json({ ok: true, url: r.url });
   } catch (err) {
     console.error('[POST /api/inscripcion]', err.message);
