@@ -73,13 +73,24 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       modo simulación sin credenciales de Stripe, igual que el resto del
       sistema.
 - [x] **Desplegado en Railway**: proyecto `querify-analytics`, servicio
-      `querify-backend` (conectado al repo de GitHub, auto-deploy en cada
-      push a `main`) + plugin de Postgres administrado. URL pública:
-      `https://querify-backend-production.up.railway.app`. La raíz del
-      repo necesitó un `package.json` mínimo + `railway.json` (build/start
-      commands `cd querify-backend && npm ...`) porque el backend sirve
-      el sitio desde `../querify-web`, fuera de `querify-backend/` — sin
-      esto Railpack no detectaba el lenguaje del monorepo.
+      `querify-backend` (conectado al repo de GitHub, aunque el
+      auto-deploy en push nunca disparó solo en la práctica — usar
+      `railway up --service querify-backend --ci` para forzarlo) + plugin
+      de Postgres administrado. La raíz del repo necesitó un `package.json`
+      mínimo + `railway.json` (build/start commands
+      `cd querify-backend && npm ...`) porque el backend sirve el sitio
+      desde `../querify-web`, fuera de `querify-backend/` — sin esto
+      Railpack no detectaba el lenguaje del monorepo.
+- [x] **Dominio propio**: `https://querifyanalytics.com` (comprado en
+      Cloudflare, 15 ago 2026) — CNAME raíz → target de Railway (`p7som3hx
+      .up.railway.app`) + TXT de verificación, proxy de Cloudflare
+      apagado ("DNS only") para no interferir con el certificado SSL de
+      Railway. `PUBLIC_BASE_URL`/`CORS_ORIGINS`, el webhook de Stripe (se
+      actualizó la URL del endpoint existente, mismo secreto) y el webhook
+      de WhatsApp (dashboard de Meta) ya apuntan aquí. La URL vieja
+      (`https://querify-backend-production.up.railway.app`) se queda
+      como alias — sigue funcionando, no hay que migrar nada más si se
+      usa por accidente.
 - [x] **WhatsApp con número real** (ya no el de prueba): migrado desde la
       app de WhatsApp Business vía Meta (Phone Number ID
       `1191736867364483`, número `+52 1 844 347 2957`). El token
@@ -172,8 +183,6 @@ reintentar después.
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
       cualquier buzón del tenant)
-- [ ] Dominio propio apuntando a Railway (opcional — hoy usa el
-      `*.up.railway.app` gratuito)
 - [ ] La sesión del panel `/admin` usa `MemoryStore` (advertencia de
       Express en los logs de Railway): se pierde al reiniciar/redeploy y
       no escala a más de una instancia. No es urgente para un solo admin
@@ -226,7 +235,9 @@ Instrucciones completas en `querify-backend/README.md`. En resumen:
 - Proyecto: `querify-analytics` (workspace de Railway de Jose Luis) —
   servicios `querify-backend` (conectado al repo de GitHub, rama `main`,
   auto-deploy en cada push) y `Postgres` (plugin administrado).
-- URL: `https://querify-backend-production.up.railway.app`
+- URL: `https://querifyanalytics.com` (dominio propio, DNS en Cloudflare;
+  `https://querify-backend-production.up.railway.app` sigue funcionando
+  como alias)
 - Variables de entorno: viven solo en Railway (`railway variable list
   --service querify-backend`), no en este repo. Si cambias una llave o
   credencial ahí, no lo olvides — el `.env` local es independiente.
