@@ -54,6 +54,16 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       Reutiliza la misma app de Entra ID que la bitácora a Excel/SharePoint.
       Código, `.env.example` y `README.md` ya actualizados.
 
+- [ ] **`querify_inscripcion` sigue en PENDING** (15 ago 2026, +1 día — las
+      otras 5 se aprobaron en horas, esta va más lenta, sin motivo de
+      rechazo). Mientras siga pendiente: un alumno que pague dejando
+      **solo WhatsApp (sin correo)** no recibe ninguna confirmación
+      automática (falla WhatsApp por plantilla no aprobada, no hay
+      correo de respaldo) — pasó con una prueba real (alumno #6, "Norma
+      Zapata", solo WhatsApp). Decisión tomada: no forzar correo
+      obligatorio en el formulario, solo esperar la aprobación y revisar
+      `/admin/alumnos` de vez en cuando por si alguien real queda sin
+      confirmar mientras tanto.
 - [x] **Confirmación real al apartar lugar** (14 ago 2026, corregido): un
       usuario probó el flujo completo en producción (pago real con
       tarjeta de prueba) y nunca le llegó nada, aunque la pantalla de
