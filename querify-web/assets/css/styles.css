@@ -107,7 +107,7 @@ ul{margin:0;padding:0;list-style:none}
 .brand{display:inline-flex;align-items:center;gap:11px;color:var(--ink)}
 .brand .glyph{width:48px;height:48px;flex:0 0 auto}
 .brand .wordmark{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.02em;line-height:1}
-.brand .tag{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;color:var(--muted-2);text-transform:uppercase;margin-top:3px}
+.brand .tag{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;color:var(--muted-2);text-transform:lowercase;margin-top:3px}
 .nav{display:flex;align-items:center;gap:30px}
 .nav a{color:var(--muted);font-size:15px;font-weight:500;transition:color .18s}
 .nav a:hover{color:var(--text)}

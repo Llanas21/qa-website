@@ -54,16 +54,15 @@ brief-proyecto.md      Brief original (fases 1-4: planeación, arquitectura,
       Reutiliza la misma app de Entra ID que la bitácora a Excel/SharePoint.
       Código, `.env.example` y `README.md` ya actualizados.
 
-- [ ] **`querify_inscripcion` sigue en PENDING** (15 ago 2026, +1 día — las
-      otras 5 se aprobaron en horas, esta va más lenta, sin motivo de
-      rechazo). Mientras siga pendiente: un alumno que pague dejando
-      **solo WhatsApp (sin correo)** no recibe ninguna confirmación
-      automática (falla WhatsApp por plantilla no aprobada, no hay
-      correo de respaldo) — pasó con una prueba real (alumno #6, "Norma
-      Zapata", solo WhatsApp). Decisión tomada: no forzar correo
-      obligatorio en el formulario, solo esperar la aprobación y revisar
-      `/admin/alumnos` de vez en cuando por si alguien real queda sin
-      confirmar mientras tanto.
+- [x] **`querify_inscripcion` ya quedó `APPROVED` y probada funcional**
+      (verificado 16 ago 2026): envío directo de prueba al número de
+      pruebas del usuario, confirmado recibido de verdad en el teléfono
+      (no solo `accepted` de la API). Mientras estuvo pendiente, un
+      alumno que pagara dejando **solo WhatsApp (sin correo)** no recibía
+      ninguna confirmación automática — pasó con una prueba real (alumno
+      #6, "Norma Zapata", solo WhatsApp), ya no debería repetirse. Con
+      esto resuelto, ya no hay motivo para seguir posponiendo la
+      migración de Stripe a Live (ver pendiente abajo).
 - [x] **Confirmación real al apartar lugar** (14 ago 2026, corregido): un
       usuario probó el flujo completo en producción (pago real con
       tarjeta de prueba) y nunca le llegó nada, aunque la pantalla de
@@ -183,15 +182,72 @@ reintentar después.
 
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
-      teléfonos/redes del footer, cargar las cohortes (fecha + cupo) reales
-      en `/admin/cohortes` (producción)
+      teléfonos/redes del footer, cargar fecha de inicio para la modalidad
+      **entre semana** (hoy solo "sabatino" tiene fecha, en los 4 cursos;
+      "entre semana" está vacía — el usuario aún no tiene esas fechas
+      definidas; el sitio ya maneja bien el caso sin fechas, no bloquea)
+- [x] **Limpieza de datos de prueba en producción** (16 ago 2026): se
+      borraron los 4 prospectos y 7 alumnos de prueba (propios, ningún
+      cliente real) y se resetearon `lugares_ocupados` a 0 en las 8
+      cohortes. Incluyó un alumno de prueba que se coló por accidente el
+      mismo día (ver nota abajo).
+
+**Nota importante (16 ago 2026 — un checkout de prueba en local también
+escribió en producción):** al probar el flujo de inscripción en local con
+`stripe listen`, Stripe mandó el evento `checkout.session.completed` **a
+todos los webhooks registrados de esa cuenta de prueba**, no solo al que
+escuchaba en local — el webhook permanente de producción también lo
+recibió y creó un alumno + 5 pagos + subió cupo + mandó confirmación real
+por correo, todo en producción, sin querer. Se limpió como parte del
+punto de arriba. **Mientras Stripe siga en modo Test en ambos lados
+(local y producción comparten la misma cuenta de prueba), cualquier
+checkout de prueba local puede volver a filtrarse a producción.** Esto
+deja de ser posible en cuanto se migre producción a llaves Live (local
+seguiría en Test, cuentas/webhooks ya no se cruzan).
 - [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
       resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
       "Querify Analytics" quedó activo sin necesitar revisión manual.
       Número verificado (`code_verification_status: VERIFIED`) y calidad
       **GREEN**. No era un bloqueante real, solo faltaba confirmarlo.
-- [ ] Migrar Stripe de modo Test a Live (nuevas llaves `sk_live_...` +
-      nuevo webhook permanente para esas llaves)
+      Prueba adicional con un número ajeno (8445503212): la plantilla
+      `querify_bienvenida` se mandó y la API respondió `accepted`, pero el
+      webhook de confirmación de entrega no se pudo verificar porque el
+      servicio se reinició (redeploy) antes de poder revisar el log — no
+      es un fallo confirmado, solo quedó sin verificar. Si hace falta
+      certeza total, repetir la prueba y revisar el log en los minutos
+      siguientes (antes de cualquier redeploy).
+
+**Nota (16 ago 2026 — pruebas locales aceleradas, ambas OK):**
+- **Secuencia de seguimiento completa** probada en local con
+  `SEQ_STEP1/2/3_HOURS` bajados a minutos y `CRON_SCHEDULE=* * * * *`
+  (restaurado después a los valores reales): los 4 mensajes
+  (bienvenida→recordatorio→valor→cierre) se mandaron y la API los aceptó,
+  pero **no llegaron al teléfono** — diagnosticado: el Número de Prueba de
+  Meta solo entrega a destinatarios agregados y verificados a mano en
+  Meta for Developers → app → WhatsApp → Configuración de la API →
+  "Para". Es una limitación **solo del entorno local** (el número real de
+  producción ya entrega de verdad, confirmado antes). Si se quiere
+  volver a probar WhatsApp en local, hay que re-verificar ese número ahí.
+- **Flujo completo de inscripción** (apartar lugar → pago Stripe Test →
+  webhook → alumno + 5 pagos → confirmación) probado de punta a punta en
+  local con Puppeteer + `stripe listen`: pagó con tarjeta de prueba, el
+  webhook `checkout.session.completed` se procesó, se creó el alumno, el
+  pago 1 quedó `pagado`/`stripe`, los pagos 2-5 quedaron `pendiente` con
+  fechas correctas, el cupo de la cohorte subió, y la confirmación
+  `querify_inscripcion` se mandó por **correo** (se dejó el formulario
+  sin WhatsApp a propósito, por la limitación de arriba) — pendiente que
+  el usuario confirme si llegó a la bandeja de verdad.
+- [x] **Stripe migrado a modo Live** (16 ago 2026): nuevo webhook Live
+      creado por API (`we_1U4yMq...`, evento `checkout.session.completed`,
+      apunta a `https://querifyanalytics.com/webhook/stripe`), Railway
+      actualizado con `STRIPE_SECRET_KEY` (`sk_live_...`) y
+      `STRIPE_WEBHOOK_SECRET` nuevos, `/health` confirma `stripe: false`
+      (ya no simula). Se borró también el webhook viejo en modo Test que
+      apuntaba a producción — con esto el problema de la nota de arriba
+      (checkout de prueba local filtrándose a producción) queda resuelto
+      de raíz: local sigue en Test, producción ya está en Live, cuentas y
+      webhooks ya no se cruzan. **A partir de ahora, cualquier pago real
+      en el sitio cobra dinero de verdad.**
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
