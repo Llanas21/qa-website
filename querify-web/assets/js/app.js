@@ -201,7 +201,10 @@ function initInscripcionForm() {
   }
 
   const labelModalidad = m => m === "entre_semana" ? "Entre semana" : "Sábado";
-  const fmtFecha = f => new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+  // timeZone: "UTC" a propósito — el backend manda la fecha como medianoche UTC
+  // (viene de una columna DATE sin hora); sin fijar la zona aquí, el navegador la
+  // reinterpreta en la zona local del visitante y en México (UTC-6) se corre un día atrás.
+  const fmtFecha = f => new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
   async function cargarCohortes() {
     clearError(cohorteErr);

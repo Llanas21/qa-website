@@ -204,6 +204,18 @@ punto de arriba. **Mientras Stripe siga en modo Test en ambos lados
 checkout de prueba local puede volver a filtrarse a producción.** Esto
 deja de ser posible en cuanto se migre producción a llaves Live (local
 seguiría en Test, cuentas/webhooks ya no se cruzan).
+
+**Prueba real en Live (18 ago 2026):** cuenta de Stripe verificada por
+API (`charges_enabled`/`payouts_enabled`/`card_payments`: todo `true`/
+`active`; nota: `payouts.schedule.interval` es `manual`, el dinero no se
+deposita solo, hay que retirarlo a mano desde el dashboard). Después, el
+usuario apartó un lugar real con su propia tarjeta ($500 MXN, dinero de
+verdad): sesión `cs_live_...`, webhook recibido (200), alumno + 5 pagos
+creados correctamente, confirmación `querify_inscripcion` enviada por
+WhatsApp real (`estado=enviado`). Se reembolsó el cargo completo
+(`re_3U5bOZ...`, `status: succeeded`) y se borró el alumno/pagos de
+prueba, cupo de vuelta a 0. **Stripe Live queda verificado de punta a
+punta con dinero real.**
 - [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
       resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
       "Querify Analytics" quedó activo sin necesitar revisión manual.
