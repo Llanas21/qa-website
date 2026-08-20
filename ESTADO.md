@@ -215,7 +215,33 @@ creados correctamente, confirmación `querify_inscripcion` enviada por
 WhatsApp real (`estado=enviado`). Se reembolsó el cargo completo
 (`re_3U5bOZ...`, `status: succeeded`) y se borró el alumno/pagos de
 prueba, cupo de vuelta a 0. **Stripe Live queda verificado de punta a
-punta con dinero real.**
+punta con dinero real.** Confirmación por WhatsApp también llegó de
+verdad al teléfono del usuario.
+
+- [x] **Fix: fecha de cohorte se corría un día en `inscripcion.html`**
+      (18 ago 2026): `fecha_inicio` es una columna `DATE`, el backend la
+      manda como medianoche UTC; `fmtFecha()` en `app.js` la formateaba
+      con `new Date(f).toLocaleDateString(...)` sin fijar zona horaria,
+      así que el navegador la reinterpretaba en la zona local del
+      visitante — en México (UTC-6) esto corría la fecha un día atrás
+      (sábado 5 sep se veía como 4 sep). Fix: agregar `timeZone: "UTC"`
+      al formateador. Las demás fechas del sitio (panel admin,
+      plantillas de WhatsApp/correo) se formatean del lado del servidor
+      y no cruzan esa frontera, así que no tenían este bug — se revisó
+      con grep para confirmar que `fmtFecha` era el único lugar afectado.
+- [ ] **Listo pero SIN DESPLEGAR a propósito (18 ago 2026):** un WhatsApp
+      directo de un número que no está en la base (alguien que escribe
+      sin pasar por el formulario) se descartaba en silencio — solo se
+      veía en Meta Business Suite, no en `/admin`, y no entraba al
+      seguimiento. Se corrigió en `routes.js` (`parseWaId` + reusar
+      `altaProspecto`/`afterIntake`, igual que el formulario) y se probó
+      en local: crea el prospecto, manda la bienvenida, registra el
+      mensaje entrante, y un segundo mensaje del mismo número ya lo
+      reconoce (no duplica). **Decisión del usuario: no subir a
+      producción todavía** — el sitio ya tiene tráfico real y prefiere
+      programar el despliegue en un horario menos concurrido. Falta:
+      `git push` + `railway up --ci` cuando el usuario dé luz verde (sin
+      cambios de schema, no requiere migración).
 - [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
       resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
       "Querify Analytics" quedó activo sin necesitar revisión manual.
