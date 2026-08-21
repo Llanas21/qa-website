@@ -237,6 +237,27 @@ verdad al teléfono del usuario.
       `parseWaId` para derivar país/número del wa_id) — probado en local
       antes de subir (crea el prospecto, manda la bienvenida, registra el
       entrante, un segundo mensaje del mismo número no duplica).
+
+**Bug importante encontrado y corregido (21 ago 2026 — respuestas de
+WhatsApp nunca llegaban al webhook):** el usuario notó que, de 13 leads
+reales recibidos desde el 18 de agosto (Gilberto, Yazmin, Juan Casas,
+Andres Ramírez, Rafael Hernández, Uriel Mucino, Antonio Trejo, Iván,
+Kevin Kleiman, Judith, etc. — ya con bienvenida/recordatorio/valor
+mandados por WhatsApp con éxito), **ninguno tenía registrada ninguna
+respuesta entrante**. Se comprobó que la suscripción de la WABA a la app
+(`subscribed_apps`) sí estaba bien y que el handshake `GET /webhook`
+respondía bien — el problema real: en el dashboard de Meta for Developers
+→ WhatsApp → Configuración → Webhooks, el campo **`messages`** estaba
+**desactivado** (esto es independiente de `subscribed_apps`, que solo
+liga la WABA a la app pero no dice qué campos se entregan). El usuario lo
+activó y se confirmó con una prueba real (mensaje "Hola" desde su
+teléfono) que ya llega correctamente. **Posible causa: se perdió al
+migrar del número de prueba al número real** (nueva WABA, ver nota de
+arriba sobre las dos WhatsApp Business Accounts) — ese campo no se
+vuelve a marcar solo. **Si en el futuro se da de alta otro número o WABA,
+revisar este campo explícitamente, no asumir que basta con
+`subscribed_apps`.**
+
 - [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
       resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
       "Querify Analytics" quedó activo sin necesitar revisión manual.
