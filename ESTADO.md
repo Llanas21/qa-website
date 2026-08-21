@@ -229,19 +229,14 @@ verdad al teléfono del usuario.
       plantillas de WhatsApp/correo) se formatean del lado del servidor
       y no cruzan esa frontera, así que no tenían este bug — se revisó
       con grep para confirmar que `fmtFecha` era el único lugar afectado.
-- [ ] **Listo pero SIN DESPLEGAR a propósito (18 ago 2026):** un WhatsApp
-      directo de un número que no está en la base (alguien que escribe
-      sin pasar por el formulario) se descartaba en silencio — solo se
-      veía en Meta Business Suite, no en `/admin`, y no entraba al
-      seguimiento. Se corrigió en `routes.js` (`parseWaId` + reusar
-      `altaProspecto`/`afterIntake`, igual que el formulario) y se probó
-      en local: crea el prospecto, manda la bienvenida, registra el
-      mensaje entrante, y un segundo mensaje del mismo número ya lo
-      reconoce (no duplica). **Decisión del usuario: no subir a
-      producción todavía** — el sitio ya tiene tráfico real y prefiere
-      programar el despliegue en un horario menos concurrido. Falta:
-      `git push` + `railway up --ci` cuando el usuario dé luz verde (sin
-      cambios de schema, no requiere migración).
+- [x] **Alta automática de prospecto para WhatsApp directo de número
+      desconocido** — desplegado a producción (21 ago 2026). Antes se
+      descartaba en silencio (solo visible en Meta Business Suite, no en
+      `/admin`, no entraba al seguimiento). Ahora reutiliza
+      `altaProspecto`/`afterIntake` (misma lógica del formulario, con
+      `parseWaId` para derivar país/número del wa_id) — probado en local
+      antes de subir (crea el prospecto, manda la bienvenida, registra el
+      entrante, un segundo mensaje del mismo número no duplica).
 - [x] ~~Que Meta apruebe el nombre para mostrar del número real~~ — ya
       resuelto (15 ago 2026): `name_status: AVAILABLE_WITHOUT_REVIEW`,
       "Querify Analytics" quedó activo sin necesitar revisión manual.
