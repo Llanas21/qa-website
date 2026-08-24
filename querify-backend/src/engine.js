@@ -97,6 +97,18 @@ async function tocarUltimoMensaje(id) {
   await query(`UPDATE prospectos SET fecha_ultimo_mensaje = now() WHERE id = $1`, [id]);
 }
 
+// Respuesta manual del operador desde el panel admin (texto libre, no plantilla).
+// Solo WhatsApp por ahora — requiere que el prospecto tenga teléfono, y WhatsApp
+// solo entrega texto libre dentro de las 24h después de su último mensaje entrante
+// (si no, Meta rechaza y el error queda en el timeline tal cual lo manda Meta).
+async function responderManual(prospecto, texto) {
+  if (!prospecto.telefono) return { ok: false, error: 'Este prospecto no dejó WhatsApp.' };
+  const r = await providers.sendWhatsAppTexto({ pais: prospecto.telefono_pais, numero: prospecto.telefono, texto });
+  await registrarMensaje(prospecto.id, { tipo: 'manual', canal: 'whatsapp', estado: r.estado, contenido: texto, error: r.error });
+  if (r.ok) await tocarUltimoMensaje(prospecto.id);
+  return r;
+}
+
 /* ------------------- deduplicado + alta ------------------- */
 async function buscarExistente({ pais, numero, correo }) {
   const cond = [], params = [];
@@ -410,5 +422,5 @@ async function revisarPagosPorVencer() {
 module.exports = {
   altaProspecto, afterIntake, correrSecuencia, registrarMensaje, proximaFecha,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion,
-  confirmarPago, procesarWebhookStripe, revisarPagosPorVencer,
+  confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
 };

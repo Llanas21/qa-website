@@ -238,6 +238,22 @@ verdad al teléfono del usuario.
       antes de subir (crea el prospecto, manda la bienvenida, registra el
       entrante, un segundo mensaje del mismo número no duplica).
 
+- [ ] **Listo pero SIN DESPLEGAR (23 ago 2026):** responder por WhatsApp
+      directo desde el panel admin. Motivo: Meta Business Suite no
+      siempre da bandeja de chat para números conectados por Cloud API
+      directa (el usuario no la encontró) — en vez de depender de eso, se
+      agregó un cuadro de texto en `/admin/prospecto/:id` (solo si tiene
+      WhatsApp) que manda texto libre vía `POST /messages` (nueva
+      `providers.sendWhatsAppTexto`, nueva `engine.responderManual`, ruta
+      `POST /admin/prospecto/:id/enviar-mensaje`), queda en el timeline
+      como tipo `manual`. **Limitación real de WhatsApp, no de este
+      código:** solo se puede mandar texto libre dentro de las 24h
+      después del último mensaje entrante de esa persona; fuera de esa
+      ventana Meta rechaza (el error se muestra tal cual en el panel).
+      Probado en local con Puppeteer (login + mandar mensaje real +
+      camino de error). Falta `git push` + `railway up --ci` cuando el
+      usuario dé luz verde.
+
 **Bug importante encontrado y corregido (21 ago 2026 — respuestas de
 WhatsApp nunca llegaban al webhook):** el usuario notó que, de 13 leads
 reales recibidos desde el 18 de agosto (Gilberto, Yazmin, Juan Casas,

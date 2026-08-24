@@ -41,6 +41,36 @@ async function sendWhatsAppTemplate({ pais, numero, tipo, vars }) {
   }
 }
 
+// Envía un mensaje de TEXTO LIBRE (no plantilla) — para que el operador conteste a
+// mano desde el panel admin. WhatsApp solo permite esto dentro de las 24h después
+// del último mensaje que la persona mandó (si no, Meta rechaza con un error claro,
+// código típico #131047 "re-engagement message" — se deja pasar tal cual en `error`).
+async function sendWhatsAppTexto({ pais, numero, texto }) {
+  const to = `${(pais || '').replace('+', '')}${numero || ''}`;
+
+  if (config.simulate.whatsapp) {
+    console.info(`[SIMULA WhatsApp → ${to}] texto="${texto}"`);
+    return { ok: true, estado: 'simulado' };
+  }
+  try {
+    const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${config.whatsapp.phoneNumberId}/messages`;
+    const body = { messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.whatsapp.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || `HTTP ${res.status}`;
+      return { ok: false, estado: 'fallido', error: `WhatsApp: ${msg}` };
+    }
+    return { ok: true, estado: 'enviado' };
+  } catch (err) {
+    return { ok: false, estado: 'fallido', error: `WhatsApp: ${err.message}` };
+  }
+}
+
 /* --------------------------- Autenticación Graph ------------------------------ */
 // Compartida por correo (sendMail) y por la bitácora de sync a Excel/SharePoint.
 let graphToken = { value: null, exp: 0 };
@@ -183,4 +213,4 @@ function verificarEventoStripe(rawBody, firma) {
   return getStripe().webhooks.constructEvent(rawBody, firma, config.stripe.webhookSecret);
 }
 
-module.exports = { sendWhatsAppTemplate, sendEmail, syncProspecto, crearCheckoutSession, verificarEventoStripe };
+module.exports = { sendWhatsAppTemplate, sendWhatsAppTexto, sendEmail, syncProspecto, crearCheckoutSession, verificarEventoStripe };

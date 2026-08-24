@@ -148,10 +148,21 @@ router.get('/prospecto/:id', requireAuth, async (req, res) => {
     : '<p class="sub">Sin mensajes todavía.</p>';
 
   const activa = p.estado_secuencia === 'activa';
+  const aviso = req.query.enviado ? `<p class="pill" style="color:#8ff0c0">✓ Mensaje mandado.</p>`
+    : req.query.error ? `<p class="pill" style="color:var(--bad)">✗ No se pudo mandar: ${esc(req.query.error)}</p>` : '';
+  const responder = p.telefono ? `
+      <div class="card"><h2 style="margin-top:0">Responder por WhatsApp</h2>
+        <p class="sub">Texto libre — solo funciona dentro de las 24h después de su último mensaje. Fuera de esa ventana, WhatsApp lo va a rechazar (hay que esperar a que vuelva a escribir).</p>
+        <form method="post" action="/admin/prospecto/${p.id}/enviar-mensaje">
+          <textarea name="texto" rows="3" style="width:100%" placeholder="Escribe tu respuesta..." required></textarea>
+          <button class="btn" type="submit" style="margin-top:8px">Mandar</button>
+        </form>
+      </div>` : '';
   res.send(layout(p.nombre, `
     <a class="backlink" href="/admin">← Prospectos</a>
     <h1>${esc(p.nombre)}</h1>
     <p class="sub">Registrado el ${fmt(p.fecha_registro)} · origen: ${esc(p.origen)}</p>
+    ${aviso}
     <div class="grid2">
       <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
         <div class="k">Curso</div><div>${esc(p.curso)}</div>
@@ -172,7 +183,19 @@ router.get('/prospecto/:id', requireAuth, async (req, res) => {
         : '<span class="pill">Secuencia finalizada. El seguimiento continúa manualmente.</span>'}
       </div></div>
     </div>
+    ${responder}
     <h2>Historial de mensajes</h2><div class="card">${tl}</div>`));
+});
+
+router.post('/prospecto/:id/enviar-mensaje', requireAuth, async (req, res) => {
+  const texto = (req.body?.texto || '').toString().trim();
+  if (!texto) return res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent('Escribe algo primero.')}`);
+  const { rows } = await query(`SELECT * FROM prospectos WHERE id = $1`, [req.params.id]);
+  const p = rows[0];
+  if (!p) return res.status(404).send(layout('No encontrado', '<a class="backlink" href="/admin">← Prospectos</a><div class="card empty">Prospecto no encontrado.</div>'));
+  const r = await engine.responderManual(p, texto);
+  if (r.ok) return res.redirect(`/admin/prospecto/${req.params.id}?enviado=1`);
+  res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent(r.error || 'error desconocido')}`);
 });
 
 router.post('/prospecto/:id/responder', requireAuth, async (req, res) => {
