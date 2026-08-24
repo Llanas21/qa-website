@@ -7,8 +7,13 @@ const engine = require('./engine');
 const router = express.Router();
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// timeZone fijo a propósito: el servidor (Railway) corre en UTC, y sin esto se
+// mostraba la hora del servidor en vez de la del negocio (Saltillo/CDMX, UTC-6
+// todo el año desde que México eliminó el horario de verano en 2022 — no aplica
+// el horario de la franja fronteriza aquí). No usar la zona del navegador porque
+// esto se renderiza del lado del servidor, no llega a ejecutarse en el cliente.
 const fmt = d => d ? new Date(d).toLocaleString('es-MX',
-  { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' }) : '—';
 
 /* ------------------------------ layout ------------------------------ */
 function layout(title, body, { nav = true } = {}) {
