@@ -180,6 +180,38 @@ dashboard — se resolvió solo, sin tocar código. Si vuelve a pasar: no es
 un bug, hay que verificar la cuenta en developers.facebook.com y
 reintentar después.
 
+**Cambio de proceso en curso (24 ago 2026 — número real saliendo de la API):**
+El usuario está reorganizando su proceso de atención y quiere mover el
+número real de WhatsApp de la API (Cloud API) a la app normal de WhatsApp
+Business, para contestar a mano. Eso lo hace él desde su teléfono (no es
+algo que se ejecute por código — Meta pide verificación por SMS al migrar
+un número de la API de vuelta a la app). Decisión tomada: **pausar TODO
+el seguimiento automático proactivo** mientras tanto (no elegido: caer a
+correo automáticamente, ni dar de alta un número nuevo dedicado a la API).
+
+- [ ] **Listo pero SIN DESPLEGAR:** nuevo interruptor `AUTOMATIZACION_PAUSADA`
+      (`.env`/Railway). En `true`: no se manda bienvenida al alta, no
+      corre `correrSecuencia` (recordatorio/valor/cierre), no corre
+      `revisarPagosPorVencer` (recordatorios de pago 2-5) — todo queda
+      como no-op, sin tocar credenciales de WhatsApp. **La confirmación de
+      inscripción (`querify_inscripcion`) al pagar SIGUE activa a
+      propósito** — es un recibo transaccional de un pago real, no
+      seguimiento proactivo; si el número ya no funciona por la API para
+      ese entonces, cae a correo automáticamente por el mecanismo normal
+      de respaldo (eso sí sigue funcionando, es un fallo real de la API,
+      no un "simulado"). Se agregó también un aviso visible en todas las
+      páginas del panel admin cuando está pausado. Probado en local
+      (confirmado: un lead nuevo no recibe bienvenida, solo queda una
+      nota de sistema). Falta que el usuario confirme cuándo desplegar
+      (probablemente junto con el momento en que realice la migración del
+      número) y setear `AUTOMATIZACION_PAUSADA=true` en Railway.
+- [ ] **Pendiente para cuando se reanude:** los prospectos con secuencia
+      activa van a acumular pasos "vencidos" mientras dure la pausa (el
+      `fecha_inicio_secuencia` no se mueve solo). Si la pausa dura mucho,
+      revisar antes de quitar el interruptor si conviene reiniciar/finalizar
+      a los prospectos viejos en vez de dejar que les llegue un
+      recordatorio/valor/cierre todo junto y fuera de tiempo.
+
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar
       teléfonos/redes del footer, cargar fecha de inicio para la modalidad

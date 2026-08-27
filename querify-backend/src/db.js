@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 
 const env = (k, d = '') => (process.env[k] ?? d).toString().trim();
 const num = (k, d) => { const v = parseFloat(env(k)); return Number.isFinite(v) ? v : d; };
+const bool = (k, d) => { const v = env(k).toLowerCase(); return v ? v === 'true' || v === '1' : d; };
 
 const config = {
   port: num('PORT', 3000),
@@ -70,6 +71,14 @@ const config = {
     dedupResetDays: num('DEDUP_RESET_DAYS', 14),
     cron: env('CRON_SCHEDULE', '0 * * * *'),
   },
+
+  // Interruptor general: pausa TODO el seguimiento automático proactivo (bienvenida
+  // al alta, recordatorio/valor/cierre de la secuencia, recordatorios de pago 2-5)
+  // sin tocar credenciales ni desmontar nada — para cuando se está reorganizando el
+  // proceso de atención (ej. moviendo el número real a la app de WhatsApp Business
+  // para contestar a mano). NO pausa la confirmación de inscripción (`querify_inscripcion`)
+  // al pagar: esa es un recibo transaccional de un pago real, no seguimiento proactivo.
+  automatizacionPausada: bool('AUTOMATIZACION_PAUSADA', false),
 };
 
 // Flags de modo simulación (si faltan credenciales, no se envía nada real)

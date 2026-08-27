@@ -175,6 +175,10 @@ async function altaProspecto(data) {
 async function afterIntake(prospecto, action) {
   try {
     if (action === 'creado' || action === 'reiniciado') {
+      if (config.automatizacionPausada) {
+        await registrarMensaje(prospecto.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Bienvenida NO mandada: automatización pausada.' });
+        return;
+      }
       const ok = await enviar(prospecto, 'bienvenida');
       if (ok) await tocarUltimoMensaje(prospecto.id);
       await providers.syncProspecto(prospecto);
@@ -186,6 +190,7 @@ async function afterIntake(prospecto, action) {
 
 /* ------------------- motor de la secuencia (cron) ------------------- */
 async function correrSecuencia() {
+  if (config.automatizacionPausada) return 0;
   const { rows } = await query(`SELECT * FROM prospectos WHERE estado_secuencia = 'activa'`);
   let enviados = 0;
   for (const p of rows) {
@@ -371,7 +376,10 @@ async function procesarWebhookStripe(session) {
 // por vencer dentro de la ventana configurada, genera su Checkout Session (si no
 // se ha reenviado el link en las últimas ~20h) y la manda por WhatsApp→correo.
 async function revisarPagosPorVencer() {
+  // Marcar vencido es solo estatus (no manda nada) — corre siempre, aunque la
+  // automatización esté pausada, para que el panel admin refleje la realidad.
   await query(`UPDATE pagos SET estado = 'vencido' WHERE estado = 'pendiente' AND fecha_vencimiento < CURRENT_DATE`);
+  if (config.automatizacionPausada) return 0;
 
   const { rows } = await query(
     `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, c.curso

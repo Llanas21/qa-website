@@ -19,6 +19,8 @@ const fmt = d => d ? new Date(d).toLocaleString('es-MX',
 function layout(title, body, { nav = true } = {}) {
   const banner = config.admin.passHash ? '' :
     `<div class="warn">⚠ Estás usando la contraseña de demo. Genera un hash con <code>npm run hash -- "tu-clave"</code> y ponlo en <code>ADMIN_PASS_HASH</code>.</div>`;
+  const bannerPausa = config.automatizacionPausada
+    ? `<div class="warn">⏸ Automatización pausada — no se manda bienvenida, recordatorio/valor/cierre ni recordatorios de pago. La confirmación de inscripción al pagar sí sigue activa. Quita <code>AUTOMATIZACION_PAUSADA</code> en Railway para reanudar.</div>` : '';
   const menu = nav ? `<nav class="topnav">
       <span class="brand">Querify · Admin</span>
       <div class="links">
@@ -68,7 +70,7 @@ function layout(title, body, { nav = true } = {}) {
   .login input{width:100%}.err{color:var(--bad);font-size:13.5px;margin-top:10px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.grid2,.kv{grid-template-columns:1fr}}
   .backlink{display:inline-block;margin-bottom:14px;color:var(--muted)}
-</style></head><body>${menu}<div class="wrap">${banner}${body}</div></body></html>`;
+</style></head><body>${menu}<div class="wrap">${banner}${bannerPausa}${body}</div></body></html>`;
 }
 
 /* ------------------------------ auth ------------------------------ */
