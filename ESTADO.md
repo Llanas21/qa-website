@@ -189,22 +189,20 @@ un número de la API de vuelta a la app). Decisión tomada: **pausar TODO
 el seguimiento automático proactivo** mientras tanto (no elegido: caer a
 correo automáticamente, ni dar de alta un número nuevo dedicado a la API).
 
-- [ ] **Listo pero SIN DESPLEGAR:** nuevo interruptor `AUTOMATIZACION_PAUSADA`
-      (`.env`/Railway). En `true`: no se manda bienvenida al alta, no
-      corre `correrSecuencia` (recordatorio/valor/cierre), no corre
-      `revisarPagosPorVencer` (recordatorios de pago 2-5) — todo queda
-      como no-op, sin tocar credenciales de WhatsApp. **La confirmación de
-      inscripción (`querify_inscripcion`) al pagar SIGUE activa a
-      propósito** — es un recibo transaccional de un pago real, no
-      seguimiento proactivo; si el número ya no funciona por la API para
-      ese entonces, cae a correo automáticamente por el mecanismo normal
-      de respaldo (eso sí sigue funcionando, es un fallo real de la API,
-      no un "simulado"). Se agregó también un aviso visible en todas las
-      páginas del panel admin cuando está pausado. Probado en local
-      (confirmado: un lead nuevo no recibe bienvenida, solo queda una
-      nota de sistema). Falta que el usuario confirme cuándo desplegar
-      (probablemente junto con el momento en que realice la migración del
-      número) y setear `AUTOMATIZACION_PAUSADA=true` en Railway.
+- [x] **Desplegado y activo en producción (31 ago 2026):** nuevo
+      interruptor `AUTOMATIZACION_PAUSADA=true` en Railway. No se manda
+      bienvenida al alta, no corre `correrSecuencia`
+      (recordatorio/valor/cierre), no corre `revisarPagosPorVencer`
+      (recordatorios de pago 2-5) — todo queda como no-op, sin tocar
+      credenciales de WhatsApp. **La confirmación de inscripción
+      (`querify_inscripcion`) al pagar SIGUE activa a propósito** — es un
+      recibo transaccional de un pago real, no seguimiento proactivo; si
+      el número ya no funciona por la API, cae a correo automáticamente
+      por el mecanismo normal de respaldo (es un fallo real de la API, no
+      un "simulado"). Aviso visible en todas las páginas del panel admin
+      mientras esté pausado. El usuario ya migró el número real a la app
+      de WhatsApp Business ese mismo día. `/health` confirmado sano tras
+      el despliegue.
 - [ ] **Pendiente para cuando se reanude:** los prospectos con secuencia
       activa van a acumular pasos "vencidos" mientras dure la pausa (el
       `fecha_inicio_secuencia` no se mueve solo). Si la pausa dura mucho,
