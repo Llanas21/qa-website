@@ -400,6 +400,23 @@ revisar este campo explícitamente, no asumir que basta con
       (empieza en modo solo-observar; subir a `quarantine`/`reject` más
       adelante una vez confirmado que todo pasa limpio). No es
       indispensable con SPF+DKIM ya alineados, solo refuerza más.
+- [ ] **Pendiente (pospuesto, 1 oct 2026): foto de perfil del buzón
+      `contacto@querifyanalytics.com`.** Se intentó por `Set-UserPhoto`
+      (PowerShell/ExchangeOnlineManagement) — el cmdlet no está
+      disponible en la sesión del usuario aun después de
+      `Connect-ExchangeOnline` (`Get-Command Set-UserPhoto` no devuelve
+      nada; posible tema de rol/RBAC, sin resolver). El admin center
+      tampoco deja subir foto directo porque el buzón tiene el inicio de
+      sesión bloqueado (normal en un buzón compartido) — la opción de
+      cámara solo aparece con sesión activa. Camino que faltaba probar:
+      desbloquear sesión temporalmente → iniciar sesión en outlook.office.com
+      como ese buzón → cambiar foto ahí → volver a bloquear sesión. Nota
+      de alcance real: esto solo se vería en Outlook/Teams/directorio
+      interno, nunca en el Gmail de los clientes (para eso hace falta
+      BIMI, que depende de tener DMARC en modo exigir — ver pendiente de
+      arriba). Imagen ya preparada (JPG con fondo blanco a partir del
+      logo del sitio) en el scratchpad de la sesión que generó esto —
+      si no sigue ahí, regenerar desde `querify-web/assets/img/querify-logo.png`.
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
