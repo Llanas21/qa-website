@@ -377,10 +377,30 @@ revisar este campo explícitamente, no asumir que basta con
       de raíz: local sigue en Test, producción ya está en Live, cuentas y
       webhooks ya no se cruzan. **A partir de ahora, cualquier pago real
       en el sitio cobra dinero de verdad.**
+- [x] **Dominio propio verificado en Microsoft 365 para correo (1 oct
+      2026)** — como el sitio ahora solo maneja correo (ver más arriba),
+      que los mensajes llegaran a spam por mandarse desde el dominio
+      genérico `*.onmicrosoft.com` se volvió un problema serio. Se agregó
+      `querifyanalytics.com` como dominio personalizado en Microsoft 365:
+      MX, SPF (TXT) y 2 CNAME de DKIM (`selector1`/`selector2._domainkey`,
+      apuntan a infraestructura bajo el TLD real `.microsoft` que es de
+      Microsoft — no es un error, el valor va completo así) agregados a
+      mano en Cloudflare (el conector automático Microsoft↔Cloudflare dio
+      error "URL no verificada", conocido/no solucionable del lado del
+      usuario — se hizo manual sin problema) y confirmados propagados por
+      DNS. DKIM activado en el admin center. El buzón compartido pasó a
+      tener `contacto@querifyanalytics.com` como dirección principal
+      (antes `contacto@QuerifyAnalytics.onmicrosoft.com`, que queda como
+      alias). `MAIL_FROM` actualizado en Railway al nuevo correo. Probado
+      con un envío real de producción (`estado: enviado`, sin error).
+      **Pendiente opcional:** agregar un registro DMARC (`_dmarc` TXT,
+      empezar en `p=none` para solo monitorear) — mejora más la entrega
+      pero no es indispensable con SPF+DKIM ya alineados.
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
-      cualquier buzón del tenant)
+      cualquier buzón del tenant). Nota: ahora el buzón relevante es
+      `contacto@querifyanalytics.com`, no `noreply@...`.
 - [ ] La sesión del panel `/admin` usa `MemoryStore` (advertencia de
       Express en los logs de Railway): se pierde al reiniciar/redeploy y
       no escala a más de una instancia. No es urgente para un solo admin
