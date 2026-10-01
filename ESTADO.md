@@ -393,9 +393,13 @@ revisar este campo explícitamente, no asumir que basta con
       (antes `contacto@QuerifyAnalytics.onmicrosoft.com`, que queda como
       alias). `MAIL_FROM` actualizado en Railway al nuevo correo. Probado
       con un envío real de producción (`estado: enviado`, sin error).
-      **Pendiente opcional:** agregar un registro DMARC (`_dmarc` TXT,
-      empezar en `p=none` para solo monitorear) — mejora más la entrega
-      pero no es indispensable con SPF+DKIM ya alineados.
+      **Pendiente opcional (pospuesto a propósito, el usuario dijo "lo
+      agregamos después" — 1 oct 2026):** agregar registro DMARC. Valor
+      listo para cuando se retome — TXT en `_dmarc` →
+      `v=DMARC1; p=none; rua=mailto:contacto@querifyanalytics.com`
+      (empieza en modo solo-observar; subir a `quarantine`/`reject` más
+      adelante una vez confirmado que todo pasa limpio). No es
+      indispensable con SPF+DKIM ya alineados, solo refuerza más.
 - [ ] Aplicar la restricción de `Mail.Send` solo al buzón `noreply@...`
       vía `New-ApplicationAccessPolicy` en PowerShell (opcional pero
       recomendado — por default el permiso alcanza para enviar como
