@@ -88,7 +88,7 @@ async function enviarLinkPago(alumno, pago, url) {
   const vars = [alumno.nombre, alumno.curso, pago.numero_pago, Math.round(Number(pago.monto)), url];
   return enviarConVars({
     pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
-    canal: alumno.whatsapp ? 'whatsapp' : 'correo', tipo: 'pago', vars,
+    canal: 'correo', tipo: 'pago', vars,
     onLog: (m) => registrarMensajeAlumno(alumno.id, m),
   });
 }
@@ -120,7 +120,11 @@ async function buscarExistente({ pais, numero, correo }) {
   return rows[0] || null;
 }
 
-function canalDe(numero) { return numero ? 'whatsapp' : 'correo'; }
+// A partir del 1 oct 2026 el sitio solo maneja correo — el número real salió
+// de la API (se migró a la app de WhatsApp Business, ver ESTADO.md). Se deja
+// la lógica de WhatsApp intacta en enviarConVars/providers por si algún día
+// se reconecta un número; aquí simplemente ya no se elige nunca ese canal.
+function canalDe(numero) { return 'correo'; }
 
 // Alta o actualización según reglas del brief. NO envía nada (eso lo hace afterIntake).
 async function altaProspecto(data) {
@@ -146,7 +150,7 @@ async function altaProspecto(data) {
            telefono_pais = COALESCE(telefono_pais, $3),
            telefono      = COALESCE(telefono, $4),
            correo        = COALESCE(correo, $5),
-           canal         = CASE WHEN telefono IS NOT NULL OR $4 IS NOT NULL THEN 'whatsapp' ELSE 'correo' END
+           canal         = 'correo'
          WHERE id = $1 RETURNING *`,
         [existente.id, curso, pais, numero, correo]);
       return { action: 'actualizado', prospecto: rows[0] };
@@ -327,7 +331,7 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
   const vars = [alumno.nombre, cohorte.curso];
   await enviarConVars({
     pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
-    canal: alumno.whatsapp ? 'whatsapp' : 'correo', tipo: 'inscripcion', vars,
+    canal: 'correo', tipo: 'inscripcion', vars,
     onLog: (m) => registrarMensajeAlumno(alumno.id, m),
   });
 
@@ -387,6 +391,7 @@ async function revisarPagosPorVencer() {
      JOIN alumnos  a ON a.id = p.alumno_id
      JOIN cohortes c ON c.id = a.cohorte_id
      WHERE p.estado IN ('pendiente', 'vencido') AND p.numero_pago > 1
+       AND NOT a.archivado
        AND p.fecha_vencimiento <= (CURRENT_DATE + $1::int)
        AND (p.fecha_recordatorio_enviado IS NULL OR p.fecha_recordatorio_enviado < now() - interval '20 hours')
      ORDER BY p.fecha_vencimiento ASC`,
@@ -413,7 +418,7 @@ async function revisarPagosPorVencer() {
       // — se marca pagado desde /admin/alumnos con el botón manual, como en producción
       // cuando alguien transfiere fuera de Stripe.
       await registrarMensajeAlumno(p.alumno_id, {
-        tipo: 'pago', canal: alumno.whatsapp ? 'whatsapp' : 'correo', estado: 'simulado',
+        tipo: 'pago', canal: 'correo', estado: 'simulado',
         contenido: `[SIMULADO] Liga de pago ${p.numero_pago}/5 ($${p.monto} MXN) — sin credenciales de Stripe.`,
       });
       enviados++;
@@ -428,7 +433,7 @@ async function revisarPagosPorVencer() {
 }
 
 module.exports = {
-  altaProspecto, afterIntake, correrSecuencia, registrarMensaje, proximaFecha,
+  altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
 };

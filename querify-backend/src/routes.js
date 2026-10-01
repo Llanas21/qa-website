@@ -89,11 +89,11 @@ router.post('/api/inscripcion', async (req, res) => {
 
   try {
     const origin = `${req.protocol}://${req.get('host')}`;
-    // Mismo canal que decidirá enviarConVars() al confirmar el pago (WhatsApp
-    // si dejó número, si no correo) — se lo pasamos a la página de gracias por
-    // query string para que muestre el mensaje correcto ("te contactaremos por
-    // WhatsApp/correo"), ya que Stripe es quien redirige ahí, no nuestro JS.
-    const canal = telOk ? 'whatsapp' : 'correo';
+    // El sitio solo maneja correo desde el 1 oct 2026 (ver ESTADO.md) — mismo
+    // canal que usará enviarConVars() al confirmar el pago. Se le sigue
+    // pasando a la página de gracias por query string porque es Stripe quien
+    // redirige ahí, no nuestro JS.
+    const canal = 'correo';
     const urlExito = `${origin}/inscripcion-gracias.html?session_id={CHECKOUT_SESSION_ID}&canal=${canal}`;
     const urlCancelado = `${origin}/cursos/inscripcion.html?curso=${encodeURIComponent(b.curso || '')}&cancelado=1`;
 

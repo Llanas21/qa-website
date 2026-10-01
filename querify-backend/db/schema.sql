@@ -61,8 +61,11 @@ CREATE TABLE IF NOT EXISTS alumnos (
   whatsapp_pais  TEXT,                 -- ej. '+52' (mismo formato que prospectos.telefono_pais)
   whatsapp       TEXT,                 -- solo dígitos
   correo         TEXT,
+  archivado      BOOLEAN NOT NULL DEFAULT false, -- true = no recibe recordatorios de pago automáticos
   fecha_alta     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Migración en línea para bases creadas antes de que existiera `archivado`:
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_alumnos_cohorte   ON alumnos (cohorte_id);
 CREATE INDEX IF NOT EXISTS idx_alumnos_prospecto ON alumnos (prospecto_id);
 

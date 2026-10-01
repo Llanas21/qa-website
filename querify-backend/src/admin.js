@@ -311,7 +311,7 @@ router.get('/alumnos', requireAuth, async (req, res) => {
     ORDER BY a.fecha_alta DESC`);
 
   const filas = rows.map(a => `<tr>
-      <td><a href="/admin/alumno/${a.id}"><b>${esc(a.nombre)}</b></a></td>
+      <td><a href="/admin/alumno/${a.id}"><b>${esc(a.nombre)}</b></a>${a.archivado ? ' <span class="tag">archivado</span>' : ''}</td>
       <td>${esc(a.curso)} <span class="pill">${label(a.modalidad)}</span></td>
       <td class="pill">${a.fecha_inicio ? new Date(a.fecha_inicio).toLocaleDateString('es-MX') : '—'}</td>
       <td>${a.pagados} / 5 pagados${a.vencidos > 0 ? ` <span class="tag" style="color:var(--bad);border-color:#5c1a1a">${a.vencidos} vencido(s)</span>` : ''}</td>
@@ -350,13 +350,18 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
 
   res.send(layout(a.nombre, `
     <a class="backlink" href="/admin/alumnos">← Alumnos</a>
-    <h1>${esc(a.nombre)}</h1>
+    <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
     <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${new Date(a.fecha_inicio).toLocaleDateString('es-MX')}</p>
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
       <div class="k">Prospecto de origen</div><div>${a.prospecto_id ? `<a href="/admin/prospecto/${a.prospecto_id}">#${a.prospecto_id}</a>` : '— (inscripción directa)'}</div>
-    </div></div>
+    </div>
+      <div class="actions">
+        <form method="post" action="/admin/alumno/${a.id}/${a.archivado ? 'desarchivar' : 'archivar'}">
+          <button class="btn ${a.archivado ? '' : 'danger'}" type="submit">${a.archivado ? 'Reactivar recordatorios de pago' : 'Archivar (dejar de mandar recordatorios de pago)'}</button>
+        </form>
+      </div></div>
     <h2>Plan de pagos</h2>
     <table><thead><tr><th>Pago</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th>Fecha de pago</th><th></th></tr></thead>
       <tbody>${filasPago}</tbody></table>
@@ -365,6 +370,18 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
 
 router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {
   await engine.confirmarPago({ pagoId: req.params.pagoId, metodo: 'manual' });
+  res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+router.post('/alumno/:id/archivar', requireAuth, async (req, res) => {
+  await query(`UPDATE alumnos SET archivado = true WHERE id = $1`, [req.params.id]);
+  await engine.registrarMensajeAlumno(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Archivado desde el panel — ya no recibe recordatorios de pago automáticos.' });
+  res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+router.post('/alumno/:id/desarchivar', requireAuth, async (req, res) => {
+  await query(`UPDATE alumnos SET archivado = false WHERE id = $1`, [req.params.id]);
+  await engine.registrarMensajeAlumno(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Reactivado desde el panel — vuelve a recibir recordatorios de pago automáticos.' });
   res.redirect(`/admin/alumno/${req.params.id}`);
 });
 

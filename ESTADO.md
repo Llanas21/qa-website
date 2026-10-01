@@ -203,12 +203,41 @@ correo automáticamente, ni dar de alta un número nuevo dedicado a la API).
       mientras esté pausado. El usuario ya migró el número real a la app
       de WhatsApp Business ese mismo día. `/health` confirmado sano tras
       el despliegue.
-- [ ] **Pendiente para cuando se reanude:** los prospectos con secuencia
-      activa van a acumular pasos "vencidos" mientras dure la pausa (el
-      `fecha_inicio_secuencia` no se mueve solo). Si la pausa dura mucho,
-      revisar antes de quitar el interruptor si conviene reiniciar/finalizar
-      a los prospectos viejos en vez de dejar que les llegue un
-      recordatorio/valor/cierre todo junto y fuera de tiempo.
+- [x] **Decisión final (1 oct 2026): el sitio solo maneja correo, ya no
+      WhatsApp, de forma permanente** (no fue solo una pausa temporal
+      mientras migraba el número — el usuario decidió quedarse así).
+      Cambios:
+      - `engine.canalDe()` y todos los `enviarConVars()` (bienvenida,
+        secuencia, confirmación de inscripción, recordatorios de pago)
+        ahora fijan `canal: 'correo'` siempre, sin importar si hay
+        teléfono. La maquinaria de WhatsApp (`providers.sendWhatsAppTemplate`,
+        el fallback en `enviarConVars`) queda intacta sin borrar, por si
+        algún día se reconecta un número — simplemente ya no se invoca.
+      - El campo de WhatsApp **se queda en los formularios** del sitio
+        (decisión explícita del usuario) como dato de referencia opcional
+        — ya no se usa para mandar nada, solo queda visible en `/admin`.
+      - `gracias.html`/`inscripcion-gracias.html` ahora siempre dicen "te
+        contactaremos por correo" (antes dependía de si dejaste teléfono).
+      - Nueva columna `alumnos.archivado` (default false): cuando es
+        true, `revisarPagosPorVencer` lo excluye por completo (no le
+        manda recordatorios de pago 2-5). Botón "Archivar"/"Reactivar" en
+        `/admin/alumno/:id`.
+      - **Se archivó todo lo que ya existía como un lote histórico
+        cerrado**, antes de reactivar la automatización: todos los
+        prospectos con `estado_secuencia='activa'` se pasaron a
+        `'finalizada'` (con nota en su timeline), y todos los alumnos
+        existentes se marcaron `archivado=true` (con nota). Sus datos e
+        historial de mensajes siguen intactos y visibles en `/admin`,
+        solo que no reciben nada automático — esto era justo el pendiente
+        que se había dejado anotado aquí mismo ("revisar antes de quitar
+        el interruptor si conviene finalizar a los prospectos viejos").
+      - `AUTOMATIZACION_PAUSADA` se quitó/puso en `false` — el
+        seguimiento ya corre de nuevo, pero correo-only, y solo afecta a
+        prospectos/alumnos **nuevos** de aquí en adelante (los viejos
+        quedaron fuera por el archivado de arriba).
+      - Probado en local antes de desplegar: un lead nuevo con teléfono
+        quedó con `canal='correo'` y la bienvenida se mandó por correo de
+        verdad; el botón archivar/desarchivar de alumno funciona.
 
 **Pendiente para producción real:**
 - [ ] Contenido: testimonios reales (hoy son de ejemplo), confirmar

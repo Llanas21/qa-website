@@ -160,10 +160,10 @@ function initLeadForm() {
     } catch (err) {
       console.warn("[Querify] No se pudo contactar el backend, se continúa el flujo:", err);
     } finally {
-      // Mismo canal que decide el backend (WhatsApp si dejó número, si no
-      // correo) — se le pasa a gracias.html por query string para que
-      // muestre el mensaje correcto ("te contactaremos por WhatsApp/correo").
-      const canal = phoneOk ? "whatsapp" : "correo";
+      // El sitio solo maneja correo desde el 1 oct 2026 (ver ESTADO.md) —
+      // mismo canal que decide el backend. Se le pasa a gracias.html por
+      // query string para que muestre el mensaje correcto.
+      const canal = "correo";
       const destino = form.dataset.gracias || GRACIAS_URL;
       const sep = destino.includes("?") ? "&" : "?";
       window.location.href = `${destino}${sep}canal=${canal}`;
