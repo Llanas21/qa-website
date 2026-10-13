@@ -65,7 +65,6 @@ function initInscripcionForm() {
   // Vive fuera de <form> (su propia tarjeta lateral), por eso se busca en el documento.
   const cohorteErr   = document.querySelector('[data-error="cohorte"]');
   const generalErr   = form.querySelector('[data-error="general"]');
-  const contactErr   = form.querySelector('[data-error="contacto"]');
 
   const nameField  = form.querySelector('[data-field="nombre"]');
   const phoneField = form.querySelector('[data-field="whatsapp"]');
@@ -117,10 +116,10 @@ function initInscripcionForm() {
 
   phoneInput.addEventListener("input", () => {
     phoneInput.value = phoneInput.value.replace(/\D/g, "");
-    clearError(phoneField); clearError(contactErr);
+    clearError(phoneField);
   });
   nameInput.addEventListener("input", () => clearError(nameField));
-  mailInput.addEventListener("input", () => { clearError(mailField); clearError(contactErr); });
+  mailInput.addEventListener("input", () => clearError(mailField));
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -135,22 +134,26 @@ function initInscripcionForm() {
 
     if (nombre.length < 2) { setError(nameField, "Escribe tu nombre."); ok = false; }
 
-    let mailOk = false;
-    if (correo !== "") {
-      mailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
-      if (!mailOk) { setError(mailField, "Revisa el formato del correo."); ok = false; }
-    }
-
-    let phoneOk = false;
-    if (tel !== "") {
-      const [min, max] = PHONE_LEN[cc] || [7, 15];
-      phoneOk = tel.length >= min && tel.length <= max;
-      if (!phoneOk) { setError(phoneField, `El número debe tener ${min === max ? min : min + " a " + max} dígitos.`); ok = false; }
-    }
-
-    if (!(phoneOk || (mailOk && correo !== "")) && tel === "" && correo === "") {
-      setError(contactErr, "Déjanos tu WhatsApp o tu correo — al menos uno.");
+    // Todos los campos de contacto son obligatorios para apartar lugar (a
+    // diferencia del formulario de leads que existía antes, ya quitado del
+    // sitio — ver ESTADO.md, 13 oct 2026).
+    if (correo === "") {
+      setError(mailField, "Escribe tu correo.");
       ok = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo)) {
+      setError(mailField, "Revisa el formato del correo.");
+      ok = false;
+    }
+
+    if (tel === "") {
+      setError(phoneField, "Escribe tu WhatsApp.");
+      ok = false;
+    } else {
+      const [min, max] = PHONE_LEN[cc] || [7, 15];
+      if (tel.length < min || tel.length > max) {
+        setError(phoneField, `El número debe tener ${min === max ? min : min + " a " + max} dígitos.`);
+        ok = false;
+      }
     }
 
     // Los radios de cohorte viven fuera de <form> (su propia tarjeta lateral),

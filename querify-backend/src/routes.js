@@ -80,12 +80,15 @@ router.post('/api/inscripcion', async (req, res) => {
   if (nombre.length < 2) return res.status(400).json({ ok: false, error: 'Nombre requerido.' });
   if (!Number.isInteger(cohorteId) || cohorteId <= 0) return res.status(400).json({ ok: false, error: 'Elige una fecha de inicio.' });
 
-  const correoOk = correo === '' ? false : /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
-  const telOk = numero === '' ? false : (numero.length >= 7 && numero.length <= 15);
-  if (correo !== '' && !correoOk) return res.status(400).json({ ok: false, error: 'Correo inválido.' });
-  if (!telOk && !(correoOk && correo !== '')) {
-    return res.status(400).json({ ok: false, error: 'Deja un WhatsApp o un correo válido.' });
-  }
+  // WhatsApp y correo son OBLIGATORIOS los dos para apartar lugar (a diferencia
+  // de /api/leads, ya retirado del sitio, donde bastaba uno — ver ESTADO.md,
+  // 13 oct 2026).
+  const correoOk = correo !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo);
+  const telOk = numero !== '' && numero.length >= 7 && numero.length <= 15;
+  if (correo === '') return res.status(400).json({ ok: false, error: 'Correo requerido.' });
+  if (!correoOk) return res.status(400).json({ ok: false, error: 'Correo inválido.' });
+  if (numero === '') return res.status(400).json({ ok: false, error: 'WhatsApp requerido.' });
+  if (!telOk) return res.status(400).json({ ok: false, error: 'Número de WhatsApp inválido.' });
 
   try {
     const origin = `${req.protocol}://${req.get('host')}`;
