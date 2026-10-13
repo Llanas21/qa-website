@@ -377,6 +377,26 @@ revisar este campo explícitamente, no asumir que basta con
       de raíz: local sigue en Test, producción ya está en Live, cuentas y
       webhooks ya no se cruzan. **A partir de ahora, cualquier pago real
       en el sitio cobra dinero de verdad.**
+- [x] **Correos en HTML con marca, en vez de texto plano (13 oct 2026)**
+      — `templates.js` ahora genera un `renderHtml(tipo, vars)` además del
+      `render()` de texto plano de siempre (ese sigue siendo lo que se
+      guarda en `mensajes.contenido` para el timeline de `/admin`, sin
+      cambios ahí). El HTML real que recibe la persona: encabezado con el
+      logo, tarjeta blanca centrada (560px), y un botón de call-to-action
+      en bienvenida/recordatorio/valor/cierre (→ `/cursos/inscripcion.html`)
+      e inscripción confirmada (→ sitio); el de **pago** destaca el monto
+      grande y un botón "Pagar ahora" directo a la liga de Stripe. Todo
+      con estilos en línea (inline) a propósito — `<style>` en el head no
+      es confiable en clientes de correo, sobre todo Outlook. El botón es
+      un `<a style="display:inline-block">` envuelto en un `<div
+      style="text-align">` (no una `<table align="center">` — esa la
+      ignoran los motores modernos de Gmail/Apple Mail por ser atributo
+      obsoleto, aunque en un render de navegador/Puppeteer sí "se ve" bien
+      por error — ojo con esto si se vuelve a tocar). `providers.sendEmail`
+      manda `contentType: 'HTML'` cuando hay una versión HTML para ese
+      tipo. Probado primero visualmente (Puppeteer, las 6 plantillas) y
+      después con un envío real a una bandeja real — confirmado que se ve
+      bien ahí también.
 - [x] **Dominio propio verificado en Microsoft 365 para correo (1 oct
       2026)** — como el sitio ahora solo maneja correo (ver más arriba),
       que los mensajes llegaran a spam por mandarse desde el dominio

@@ -105,10 +105,14 @@ async function sendEmail({ to, tipo, vars }) {
     const token = await getGraphToken();
     const remitente = config.email.from; // solo el correo, sin "Nombre <...>"
     const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(remitente)}/sendMail`;
+    // El correo real que recibe la persona va en HTML (logo, botón, etc. — ver
+    // templates.renderHtml). `cuerpo` (texto plano) sigue siendo lo que se
+    // guarda en mensajes.contenido para el timeline de /admin, sin cambios ahí.
+    const html = tpl.renderHtml(tipo, vars);
     const body = {
       message: {
         subject: asunto,
-        body: { contentType: 'Text', content: cuerpo },
+        body: html ? { contentType: 'HTML', content: html } : { contentType: 'Text', content: cuerpo },
         toRecipients: [{ emailAddress: { address: to } }],
       },
       saveToSentItems: false,
