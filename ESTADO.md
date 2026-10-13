@@ -6,10 +6,18 @@
 
 Sistema web para Querify Analytics, academia de análisis de datos operada
 en solitario (Excel, SQL Server, Power BI, Python — cursos en vivo por
-Microsoft Teams, mercado México). Instagram atrae prospectos por DM; este
-sistema captura sus datos de contacto por un formulario web y automatiza
-el seguimiento posterior (el punto de fuga que se quería resolver: gente
-que pregunta precio y desaparece).
+Microsoft Teams, mercado México).
+
+**Propósito del sitio público cambió el 13 oct 2026 — ver la nota fechada
+más abajo.** Originalmente capturaba datos de contacto por un formulario
+("solicitar información") y automatizaba el seguimiento posterior (el
+punto de fuga que se quería resolver: gente que pregunta precio y
+desaparece). Ahora el sitio está enfocado 100% a conversión directa
+("Apartar mi lugar") — ya no se pide ni se guarda información de nadie
+que solo esté preguntando; quien tiene dudas antes de pagar se va por un
+link directo de WhatsApp, atendido a mano. El motor de captura y
+seguimiento sigue existiendo en el backend (histórico + por si se
+reactiva algún día), solo que el sitio ya no lo alimenta.
 
 ## Estructura del repositorio
 
@@ -447,6 +455,56 @@ revisar este campo explícitamente, no asumir que basta con
       no escala a más de una instancia. No es urgente para un solo admin
       y una sola instancia, pero si crece, cambiar a un store persistente
       (ej. `connect-pg-simple` contra el mismo Postgres)
+
+**Pivote de producto: sitio 100% enfocado a conversión (13 oct 2026).**
+El usuario decidió dejar de pedir/registrar información de contacto en el
+sitio — ya no quiere el formulario de "solicitar información", quiere que
+cualquiera que entre se encamine directo a apartar su lugar (reducir
+fricción hacia la inscripción). Decisiones tomadas en esa conversación:
+- Se quita el formulario de leads **del sitio por completo** (no solo se
+  esconde). El motor de captura/seguimiento del backend (`engine.js`,
+  `routes.js` → `POST /api/leads`, las plantillas de
+  bienvenida/recordatorio/valor/cierre) **se queda intacto sin usarse** —
+  mismo criterio que WhatsApp antes: no se borra, solo deja de
+  alimentarse desde el sitio.
+- Para quien quiere preguntar algo antes de pagar: un link directo a
+  WhatsApp (`https://wa.me/528443472957`, número real confirmado por el
+  usuario — ojo, los números viejos `844 159 5050`/`844 355 3789` que
+  estaban regados en varios footers **eran incorrectos/de prueba**, ya se
+  reemplazaron en las 6 páginas que los tenían). Se atiende a mano desde
+  la app de WhatsApp Business (ver nota de más arriba, el número ya no
+  está en la API).
+- El contenido de las páginas de curso (temario, etc.) **se queda igual**
+  — el cambio fue solo de CTAs y quitar la captura de leads, no de
+  contenido.
+
+Cambios concretos:
+- `index.html`: nav sin "Contacto"; CTA del header y del hero pasan de
+  "Quiero información" → "Apartar mi lugar" (`cursos/inscripcion.html`);
+  debajo de los botones del hero, un link discreto a WhatsApp; se quitó
+  por completo la sección `<section class="lead" id="contacto">` (el
+  formulario); footer con el WhatsApp real + link a "Apartar mi lugar"
+  en vez de los 2 teléfonos viejos + "Solicitar información".
+- `cursos/excel.html`, `sql-server.html`, `power-bi.html`, `python.html`
+  (las 4 son idénticas en estructura, se tocaron con un script): mismo
+  cambio de nav/CTA; en la tarjeta de precio del sidebar, el botón
+  secundario "Solicitar información" se reemplazó por "¿Dudas? Escríbenos
+  por WhatsApp" (va directo a `wa.me` con el curso precargado en el
+  mensaje); se quitó la sección de leads completa; mismo fix de footer.
+- `cursos/inscripcion.html`: no tenía formulario de leads, solo se le
+  corrigió el footer (mismo fix de teléfonos).
+- `assets/js/app.js`: se eliminó `initLeadForm()` completa y su llamada
+  en `DOMContentLoaded`, junto con las constantes `LEADS_ENDPOINT` y
+  `GRACIAS_URL` que ya no se usaban. `PHONE_LEN` se queda — lo sigue
+  usando el formulario de inscripción (el campo de WhatsApp ahí es
+  opcional/informativo, ver nota de "Channel logic" en `CLAUDE.md`).
+- `gracias.html` queda **huérfana** (nadie la enlaza ya, era el destino
+  del formulario que se quitó) — se dejó el archivo tal cual, sin
+  borrarlo, solo ya no es alcanzable navegando el sitio.
+- CSS de `.lead`/`.lead-grid`/`.lead-copy`/`.form-card` en
+  `styles.css` quedó sin usarse (no se tocó, es inofensivo dejarlo).
+- Probado visualmente con Puppeteer (`file://`, sin necesitar el backend
+  — son cambios solo de frontend) antes de desplegar.
 
 ## Decisiones ya tomadas — no reabrir sin razón concreta
 

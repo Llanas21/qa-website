@@ -20,10 +20,9 @@
     <nav class="nav" id="primary-nav" aria-label="Navegación principal">
       <a href="../index.html#cursos" style="color:#fff">Cursos</a>
       <a href="../index.html#metodo">Cómo funciona</a>
-      <a href="#contacto">Contacto</a>
     </nav>
     <div class="nav-cta">
-      <a class="btn btn-primary" href="#contacto">Quiero información</a>
+      <a class="btn btn-primary" href="inscripcion.html?curso=SQL%20Server">Apartar mi lugar</a>
       <button class="nav-toggle" aria-label="Abrir menú" aria-expanded="false" aria-controls="primary-nav">
         <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
@@ -91,7 +90,7 @@
             <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Certificado con valor curricular</li>
           </ul>
           <a class="btn btn-primary btn-block" href="inscripcion.html?curso=SQL%20Server">Apartar mi lugar</a>
-          <a class="btn btn-ghost btn-block" href="#contacto" style="margin-top:10px">Solicitar información</a>
+          <a class="btn btn-ghost btn-block" href="https://wa.me/528443472957?text=Hola%2C%20tengo%20una%20duda%20sobre%20el%20curso%20de%20SQL%20Server" target="_blank" rel="noopener" style="margin-top:10px">¿Dudas? Escríbenos por WhatsApp</a>
         </div>
 
         <div class="side-card">
@@ -116,61 +115,6 @@
     </div>
   </section>
 
-  <section class="lead" id="contacto">
-    <div class="container lead-grid">
-      <div class="lead-copy">
-        <span class="eyebrow on-dark">Pide información</span>
-        <h2>¿Te interesa este curso? Escríbenos</h2>
-        <p class="lede">Déjanos tus datos y te contactamos por WhatsApp con los horarios disponibles de este curso y cómo apartar tu lugar. Sin compromiso.</p>
-        <ul class="lead-points">
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Te respondemos por WhatsApp (o correo, si prefieres).</li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Vemos qué modalidad te acomoda: entre semana o sábado.</li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Apartas tu lugar desde $500 MXN cuando estés listo.</li>
-        </ul>
-      </div>
-      <div class="form-card">
-        <h3>Solicita informes</h3>
-        <p class="sub">Toma menos de un minuto.</p>
-        <form id="lead-form" data-gracias="../gracias.html" novalidate>
-          <div class="hp" aria-hidden="true">
-            <label for="empresa">No llenar este campo</label>
-            <input type="text" id="empresa" name="empresa" tabindex="-1" autocomplete="off">
-          </div>
-          <div class="field" data-field="nombre">
-            <label for="nombre">Nombre <span class="req">*</span></label>
-            <input class="input" type="text" id="nombre" name="nombre" placeholder="Tu nombre" autocomplete="name" required>
-            <p class="err-msg"></p>
-          </div>
-          <div class="field" data-field="curso">
-            <label for="curso">Curso de interés</label>
-            <select class="select" id="curso" name="curso"><option value="Excel">Excel</option><option value="SQL Server" selected>SQL Server</option><option value="Power BI">Power BI</option><option value="Python">Python</option><option value="Aún no decido">Aún no decido</option></select>
-          </div>
-          <div class="field" data-field="whatsapp">
-            <label for="whatsapp">WhatsApp <span class="opt">— o tu correo</span></label>
-            <div class="phone-row">
-              <select class="select" id="cc" name="cc" aria-label="Código de país">
-                <option value="+52" selected>🇲🇽 +52</option><option value="+1">🇺🇸 +1</option>
-                <option value="+34">🇪🇸 +34</option><option value="+54">🇦🇷 +54</option>
-                <option value="+57">🇨🇴 +57</option><option value="+56">🇨🇱 +56</option>
-                <option value="+51">🇵🇪 +51</option><option value="+593">🇪🇨 +593</option>
-                <option value="+502">🇬🇹 +502</option><option value="+503">🇸🇻 +503</option>
-              </select>
-              <input class="input" type="tel" inputmode="numeric" id="whatsapp" name="whatsapp" placeholder="10 dígitos" autocomplete="tel-national">
-            </div>
-            <p class="err-msg"></p>
-          </div>
-          <div class="field" data-field="correo">
-            <label for="correo">Correo <span class="opt">— o tu WhatsApp</span></label>
-            <input class="input" type="email" id="correo" name="correo" placeholder="tucorreo@ejemplo.com" autocomplete="email">
-            <p class="err-msg"></p>
-          </div>
-          <p class="err-msg" data-error="contacto" style="margin:-6px 0 14px"></p>
-          <button class="btn btn-primary btn-lg btn-block" type="submit">Solicitar información</button>
-          <p class="form-note">Usaremos tus datos solo para contactarte sobre los cursos. Contacto inicial por WhatsApp.</p>
-        </form>
-      </div>
-    </div>
-  </section>
 </main>
 
 <footer class="site-footer">
@@ -194,9 +138,8 @@
       <div class="footer-col">
         <h5>Contacto</h5>
         <a href="https://instagram.com/querify_analytics" target="_blank" rel="noopener">@querify_analytics</a>
-        <a href="tel:+528441595050">844 159 5050</a>
-        <a href="tel:+528443553789">844 355 3789</a>
-        <a href="#contacto">Solicitar información</a>
+        <a href="https://wa.me/528443472957" target="_blank" rel="noopener">WhatsApp: 844 347 2957</a>
+        <a href="inscripcion.html?curso=SQL%20Server">Apartar mi lugar</a>
       </div>
     </div>
     <div class="footer-bottom">
