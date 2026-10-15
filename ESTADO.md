@@ -119,6 +119,15 @@ tiempo. Decisiones tomadas en esa conversación:
   El FAB se oculta solo si no queda ningún pago pendiente en toda la
   academia (no debería pasar en la práctica, pero evita un botón sin
   nada que hacer).
+  - **"Liquidar" en `/admin/alumno/:id`**: para cuando alguien paga de un
+    jalón todo lo que le falta (en vez de registrar pago por pago), un
+    botón junto al plan de pagos marca TODOS los pagos pendientes/vencidos
+    de ese alumno como pagados a la vez (con confirmación del navegador
+    antes de ejecutar). Solo aparece si le queda algo pendiente. Bug
+    visual encontrado y corregido en las pruebas: el texto del botón
+    (incluye el conteo dinámico de pagos) se salía de la píldora por el
+    `white-space:nowrap` normal de `.btn` — se cambió a `.btn.block` con
+    `white-space:normal` para que envuelva en vez de desbordarse.
 
 - [x] **Dos rondas de retroalimentación de diseño sobre el rediseño del
   panel** (15 oct 2026), todas ya probadas con Puppeteer (emulación real

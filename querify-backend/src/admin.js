@@ -709,6 +709,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     : '<p class="sub">Sin mensajes todavía.</p>';
 
   const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
+  const pendientes = pagos.filter(p => p.estado !== 'pagado').length;
 
   res.send(layout(a.nombre, `
     <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
@@ -725,6 +726,9 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
         </form>
       </div></div>
     <h2>Plan de pagos</h2>
+    ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
+      <button class="btn ghost block" type="submit" style="white-space:normal;line-height:1.3">Liquidar — marcar ${pendientes} pago(s) restante(s) como pagados</button>
+    </form>` : ''}
     <div class="pagos">${filasPago}</div>
     <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
     { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
@@ -732,6 +736,18 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
 
 router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {
   await engine.confirmarPago({ pagoId: req.params.pagoId, metodo: 'manual' });
+  res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+// "Liquidar" — para cuando alguien paga de un jalón todo lo que le falta
+// (en vez de repetir el registro pago por pago). Marca cada pago pendiente
+// o vencido del alumno como pagado, uno por uno, reutilizando la misma
+// confirmarPago() de siempre.
+router.post('/alumno/:id/liquidar', requireAuth, async (req, res) => {
+  const pendientes = (await query(`SELECT id FROM pagos WHERE alumno_id = $1 AND estado <> 'pagado'`, [req.params.id])).rows;
+  for (const p of pendientes) {
+    await engine.confirmarPago({ pagoId: p.id, metodo: 'manual' });
+  }
   res.redirect(`/admin/alumno/${req.params.id}`);
 });
 
