@@ -126,7 +126,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Querify Admin">
 <link rel="manifest" href="/admin/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/assets/img/querify-logo.png">
+<link rel="apple-touch-icon" href="/assets/img/querify-logo-apple-touch-icon.png">
 <link rel="icon" type="image/png" href="/assets/img/querify-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
