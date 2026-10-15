@@ -486,11 +486,17 @@ router.post('/prospecto/:id/pausar', requireAuth, async (req, res) => {
 
 /* ------------------------------ errores de envío ------------------------------ */
 router.get('/errores', requireAuth, async (req, res) => {
+  // LEFT JOIN a prospectos Y alumnos — un mensaje fallido pertenece a uno
+  // de los dos, nunca a ambos (ver schema.sql), así que COALESCE arma el
+  // nombre sin importar cuál sea, y el link se arma aparte en el render.
   const { rows } = await query(
-    `SELECT m.*, p.nombre FROM mensajes m JOIN prospectos p ON p.id = m.prospecto_id
+    `SELECT m.*, COALESCE(p.nombre, a.nombre) AS nombre
+     FROM mensajes m
+     LEFT JOIN prospectos p ON p.id = m.prospecto_id
+     LEFT JOIN alumnos a ON a.id = m.alumno_id
      WHERE m.estado = 'fallido' ORDER BY m.created_at DESC`);
   const lista = rows.length ? `<div class="list">${rows.map(m => `
-    <a class="list-item" href="/admin/prospecto/${m.prospecto_id}">
+    <a class="list-item" href="${m.alumno_id ? `/admin/alumno/${m.alumno_id}` : `/admin/prospecto/${m.prospecto_id}`}">
       <div class="li-top">
         <div><div class="li-title">${esc(m.nombre)}</div>
           <div class="li-meta">${esc(m.tipo)} · ${esc(m.canal)}</div>
@@ -702,12 +708,6 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       </div>
     </div>`).join('');
 
-  const msgs = (await query(`SELECT * FROM mensajes WHERE alumno_id = $1 ORDER BY created_at ASC`, [req.params.id])).rows;
-  const tl = msgs.length ? `<ul class="timeline">${msgs.map(m => `<li class="${m.estado === 'fallido' ? 'fallido' : ''}">
-      <div class="meta">${fmt(m.created_at)} · ${esc(m.tipo)} · ${esc(m.canal)} <span class="st ${m.estado}">${m.estado}</span></div>
-      <div class="body">${esc(m.error ? '⚠ ' + m.error : m.contenido)}</div></li>`).join('')}</ul>`
-    : '<p class="sub">Sin mensajes todavía.</p>';
-
   const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
   const pendientes = pagos.filter(p => p.estado !== 'pagado').length;
 
@@ -718,19 +718,17 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
-      <div class="k">Prospecto</div><div>${a.prospecto_id ? `<a href="/admin/prospecto/${a.prospecto_id}">#${a.prospecto_id}</a>` : '— (inscripción directa)'}</div>
     </div>
       <div class="actions">
         <form method="post" action="/admin/alumno/${a.id}/${a.archivado ? 'desarchivar' : 'archivar'}">
-          <button class="btn ${a.archivado ? 'ghost' : 'danger'}" type="submit">${a.archivado ? 'Reactivar recordatorios de pago' : 'Archivar (dejar de mandar recordatorios)'}</button>
+          <button class="btn ${a.archivado ? 'ghost' : 'danger'}" type="submit">${a.archivado ? 'Reactivar' : 'Archivar'}</button>
         </form>
       </div></div>
     <h2>Plan de pagos</h2>
     ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
-      <button class="btn ghost block" type="submit" style="white-space:normal;line-height:1.3">Liquidar — marcar ${pendientes} pago(s) restante(s) como pagados</button>
+      <button class="btn ghost" type="submit">Liquidar</button>
     </form>` : ''}
-    <div class="pagos">${filasPago}</div>
-    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
+    <div class="pagos">${filasPago}</div>`,
     { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
 });
 

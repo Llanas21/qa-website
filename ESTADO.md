@@ -129,6 +129,31 @@ tiempo. Decisiones tomadas en esa conversación:
     `white-space:nowrap` normal de `.btn` — se cambió a `.btn.block` con
     `white-space:normal` para que envuelva en vez de desbordarse.
 
+- [x] **Simplificación de `/admin/alumno/:id` (15 oct 2026)**, siguiendo
+  el principio de que el panel no tiene que ser autoexplicativo (quien lo
+  usa ya recibió capacitación):
+  - Se quitó la fila **"Prospecto"** de la tarjeta de contacto — era un
+    link al historial de lead del sistema anterior (formulario → secuencia
+    de seguimiento), que ya casi nunca aplica porque la inscripción ahora
+    es directa (por el sitio o alta manual), no pasa por un prospecto.
+  - Se quitó la sección **"Historial de mensajes"** completa del alumno.
+    Importante: esto NO es lo mismo que la secuencia de seguimiento de
+    prospectos (esa sí ya no aplica) — un alumno sigue recibiendo correos
+    reales (confirmación de inscripción, recordatorios automáticos de los
+    pagos 2-5), así que quitar su timeline sin más habría dejado sin
+    forma de ver si uno de esos envíos falla. Para no perder esa
+    visibilidad, **`/admin/errores` se amplió** para incluir también
+    fallos de envío de alumnos, no solo de prospectos (antes hacía
+    `JOIN` directo contra `prospectos`, lo que excluía silenciosamente
+    cualquier fallo con `alumno_id` — un hueco real que no se había
+    notado hasta ahora). Ahora hace `LEFT JOIN` contra ambas tablas y cada
+    fila enlaza al alumno o prospecto que corresponda.
+  - Los botones **"Archivar"/"Reactivar"** y **"Liquidar"** se acortaron a
+    una sola palabra (antes tenían explicaciones tipo
+    "Archivar (dejar de mandar recordatorios)", que además se salían de su
+    tarjeta por el mismo problema de `white-space:nowrap` sin ancho
+    máximo — un botón con texto largo no tiene techo de ancho propio).
+
 - [x] **Dos rondas de retroalimentación de diseño sobre el rediseño del
   panel** (15 oct 2026), todas ya probadas con Puppeteer (emulación real
   de iPhone) y funcionando:
