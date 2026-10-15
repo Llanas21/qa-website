@@ -523,6 +523,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
         <div class="field" style="margin-bottom:0"><label>Cupo máximo</label>
           <input type="text" inputmode="numeric" name="cupo_${r.id}" value="${r.cupo_maximo}"></div>
       </div>
+      <a href="/admin/grupo/${r.id}" style="display:inline-block;margin-top:12px;font-size:13px;font-weight:600">Ver alumnos de este grupo →</a>
     </div>`).join('');
 
   res.send(layout('Cohortes', `
@@ -575,65 +576,83 @@ router.post('/cohortes/nueva', requireAuth, async (req, res) => {
   res.redirect('/admin/cohortes?ok=1');
 });
 
-/* ------------------------------ alumnos y pagos ------------------------------ */
+/* ------------------------------ alumnos y pagos ------------------------------
+   /admin/alumnos ya no lista alumnos directamente — lista los GRUPOS (una
+   cohorte con al menos un alumno), más reciente primero. Cada grupo abre
+   /admin/grupo/:id con sus alumnos. */
 router.get('/alumnos', requireAuth, async (req, res) => {
   const { rows } = await query(`
-    SELECT a.*, c.curso, c.modalidad, c.fecha_inicio,
-           COUNT(p.*) FILTER (WHERE p.estado = 'pagado')  AS pagados,
-           COUNT(p.*) FILTER (WHERE p.estado = 'vencido')  AS vencidos
-    FROM alumnos a
-    JOIN cohortes c ON c.id = a.cohorte_id
+    SELECT c.id, c.curso, c.modalidad, c.fecha_inicio,
+           COUNT(DISTINCT a.id) AS total,
+           COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos
+    FROM cohortes c
+    JOIN alumnos a ON a.cohorte_id = c.id
     LEFT JOIN pagos p ON p.alumno_id = a.id
-    GROUP BY a.id, c.curso, c.modalidad, c.fecha_inicio
-    ORDER BY a.fecha_alta DESC`);
+    GROUP BY c.id
+    ORDER BY c.fecha_inicio DESC NULLS LAST, c.id DESC`);
+
+  const lista = rows.length ? `<div class="list">${rows.map(g => `
+    <a class="list-item" href="/admin/grupo/${g.id}">
+      <div class="li-top">
+        <div><div class="li-title">${esc(g.curso)} <span class="pill" style="margin:0">· ${label(g.modalidad)}</span></div>
+          <div class="li-meta">inicia ${fmtDia(g.fecha_inicio)}</div>
+        </div>
+        <div class="li-right">
+          <span class="tag">${g.total} alumno${g.total == 1 ? '' : 's'}</span>
+          ${g.vencidos > 0 ? `<div style="margin-top:5px"><span class="tag bad">${g.vencidos} vencido(s)</span></div>` : ''}
+        </div>
+      </div>
+    </a>`).join('')}</div>` : '<div class="empty">Aún no hay alumnos inscritos.</div>';
+
+  res.send(layout('Alumnos', `<h1>Alumnos</h1>${lista}`, { section: 'alumnos' }));
+});
+
+router.get('/grupo/:id', requireAuth, async (req, res) => {
+  const cohorte = (await query(`SELECT * FROM cohortes WHERE id = $1`, [req.params.id])).rows[0];
+  if (!cohorte) return res.status(404).send(layout('No encontrado', '<div class="empty">Grupo no encontrado.</div>', { back: '/admin/alumnos', section: 'alumnos' }));
+
+  const { rows } = await query(`
+    SELECT a.*,
+           COUNT(p.*) FILTER (WHERE p.estado = 'pagado') AS pagados,
+           COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos
+    FROM alumnos a
+    LEFT JOIN pagos p ON p.alumno_id = a.id
+    WHERE a.cohorte_id = $1
+    GROUP BY a.id
+    ORDER BY a.fecha_alta DESC`, [req.params.id]);
 
   const lista = rows.length ? `<div class="list">${rows.map(a => `
     <a class="list-item" href="/admin/alumno/${a.id}">
       <div class="li-top">
-        <div><div class="li-title">${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
-          <div class="li-meta">${esc(a.curso)} · ${label(a.modalidad)} · inicia ${fmtDia(a.fecha_inicio)}</div>
-        </div>
+        <div class="li-title">${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
         <div class="li-right">
           <span class="tag ${a.vencidos > 0 ? 'bad' : a.pagados >= 5 ? 'ok' : ''}">${a.pagados} / 5 pagados</span>
           ${a.vencidos > 0 ? `<div style="margin-top:5px"><span class="tag bad">${a.vencidos} vencido(s)</span></div>` : ''}
         </div>
       </div>
-    </a>`).join('')}</div>` : '<div class="empty">Aún no hay alumnos inscritos.</div>';
-
-  // Cohortes con cupo disponible, para el selector del alta manual — se
-  // muestran aunque no tengan fecha (igual que /admin/cohortes), pero esas
-  // no se pueden elegir sin fecha (el plan de pagos se calcula desde ahí).
-  const cohortesRows = (await query(
-    `SELECT id, curso, modalidad, fecha_inicio, cupo_maximo, lugares_ocupados FROM cohortes
-     WHERE fecha_inicio IS NOT NULL AND lugares_ocupados < cupo_maximo
-     ORDER BY curso, fecha_inicio`)).rows;
-  const cohorteOpts = cohortesRows.map(c =>
-    `<option value="${c.id}">${esc(c.curso)} · ${label(c.modalidad)} · ${fmtDia(c.fecha_inicio)} (${c.cupo_maximo - c.lugares_ocupados} lugar${c.cupo_maximo - c.lugares_ocupados === 1 ? '' : 'es'})</option>`
-  ).join('');
+    </a>`).join('')}</div>` : '<div class="empty">Aún no hay alumnos en este grupo.</div>';
 
   const aviso = req.query.error ? `<p class="pill bad">✗ ${esc(req.query.error)}</p>` : '';
+  const sinCupo = cohorte.lugares_ocupados >= cohorte.cupo_maximo;
 
-  res.send(layout('Alumnos', `
-    <h1>Alumnos</h1>
+  res.send(layout(`${cohorte.curso} · ${label(cohorte.modalidad)}`, `
+    <h1>${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span></h1>
+    <p class="sub">Inicia ${fmtDia(cohorte.fecha_inicio)} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
     ${lista}
-    ${fabModal({
+    ${sinCupo ? '' : fabModal({
       id: 'altaAlumno', label: 'Dar de alta un alumno', titulo: 'Dar de alta un alumno',
       autoOpen: !!req.query.error,
       contenido: `
         ${aviso}
         <form method="post" action="/admin/alumnos/nuevo">
-          <div class="field"><label>Curso y fecha de inicio</label>
-            <select name="cohorteId" required>
-              <option value="">Elige una cohorte…</option>
-              ${cohorteOpts}
-            </select></div>
+          <input type="hidden" name="cohorteId" value="${cohorte.id}">
           <div class="field"><label>Nombre completo</label><input type="text" name="nombre" placeholder="Nombre completo" required></div>
           <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
           <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
             <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
           <button class="btn block" type="submit">Dar de alta</button>
         </form>`,
-    })}`, { section: 'alumnos' }));
+    })}`, { back: '/admin/alumnos', section: 'alumnos' }));
 });
 
 router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
@@ -642,9 +661,10 @@ router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
   const nombre = (b.nombre || '').toString().trim();
   const correo = (b.correo || '').toString().trim();
   const numero = (b.whatsapp || '').toString().replace(/\D/g, '');
+  const volver = Number.isInteger(cohorteId) && cohorteId > 0 ? `/admin/grupo/${cohorteId}` : '/admin/alumnos';
 
   if (!Number.isInteger(cohorteId) || cohorteId <= 0 || nombre.length < 2 || !correo) {
-    return res.redirect(`/admin/alumnos?error=${encodeURIComponent('Elige la cohorte y llena nombre y correo.')}`);
+    return res.redirect(`${volver}?error=${encodeURIComponent('Llena nombre y correo.')}`);
   }
 
   const r = await engine.altaAlumnoManual({
@@ -653,7 +673,7 @@ router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
   });
   if (!r.ok) {
     const msg = r.motivo === 'sin_cupo' ? 'Esa cohorte ya no tiene cupo disponible.' : 'No se pudo dar de alta (cohorte no encontrada).';
-    return res.redirect(`/admin/alumnos?error=${encodeURIComponent(msg)}`);
+    return res.redirect(`${volver}?error=${encodeURIComponent(msg)}`);
   }
   res.redirect(`/admin/alumno/${r.alumno.id}?creado=1`);
 });
@@ -705,7 +725,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     <h2>Plan de pagos</h2>
     <div class="pagos">${filasPago}</div>
     <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
-    { back: '/admin/alumnos', section: 'alumnos' }));
+    { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
 });
 
 router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {

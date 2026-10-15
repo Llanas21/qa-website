@@ -82,6 +82,24 @@ tiempo. Decisiones tomadas en esa conversación:
   - Toda la lógica de negocio (queries, validaciones, redirects) quedó
     exactamente igual — este fue un cambio 100% de presentación.
 
+- [x] **"Alumnos" reestructurado por grupos (15 oct 2026)**: la pantalla
+  ya no lista alumnos directamente, lista **grupos** (una tarjeta por
+  cohorte que ya tiene al menos un alumno, más reciente primero por
+  `fecha_inicio DESC`). Tocar un grupo abre `/admin/grupo/:id` con sus
+  alumnos; de ahí se entra al detalle de cada alumno como antes (el botón
+  "volver" del detalle ahora regresa al grupo, no a la lista plana).
+  Cohortes sin ningún alumno no aparecen en Alumnos (quedan solo en
+  Cohortes) — para no dejar un callejón sin salida al dar de alta al
+  primer alumno de una cohorte nueva por transferencia, se agregó un link
+  "Ver alumnos de este grupo →" en cada tarjeta de `/admin/cohortes` que
+  lleva a `/admin/grupo/:id` sin importar si ya tiene alumnos o no. El FAB
+  de "Dar de alta un alumno" vive ahora dentro de cada grupo con la
+  cohorte precargada (ya no hay selector de cohorte en el formulario).
+  Bug real encontrado y corregido durante las pruebas: el conteo de
+  alumnos por grupo usaba `COUNT(a.*)` después de un `LEFT JOIN pagos`,
+  lo que multiplicaba cada alumno por su número de pagos (un alumno con 5
+  pagos se contaba como "5 alumnos") — se corrigió a `COUNT(DISTINCT a.id)`.
+
 - [x] **Dos rondas de retroalimentación de diseño sobre el rediseño del
   panel** (15 oct 2026), todas ya probadas con Puppeteer (emulación real
   de iPhone) y funcionando:
