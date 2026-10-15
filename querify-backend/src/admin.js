@@ -1,4 +1,11 @@
 // src/admin.js — panel de administración (login simple + vistas)
+// Rediseño 15 oct 2026: antes era un panel de prospectos con tema oscuro
+// genérico; ahora es la base de una plataforma de administración de la
+// academia pensada mobile-first (se instalará como PWA en el celular —
+// manifest.webmanifest abajo, service worker + push quedan pendientes como
+// siguiente fase, ver ESTADO.md). Misma identidad visual que el sitio
+// público (tokens de color/tipografía copiados de querify-web/assets/css/
+// styles.css) para que se sienta parte de la misma marca.
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { config, query } = require('./db');
@@ -14,64 +21,217 @@ const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c =>
 // esto se renderiza del lado del servidor, no llega a ejecutarse en el cliente.
 const fmt = d => d ? new Date(d).toLocaleString('es-MX',
   { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' }) : '—';
+const fmtDia = d => d ? new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+/* --------------------------------- iconos --------------------------------- */
+// Mismo estilo que el sitio público: trazo (stroke), sin relleno, viewBox 24x24.
+const ICO = {
+  alumnos: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  cohortes: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  errores: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+  atras: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+};
+const svg = (nombre, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${ICO[nombre]}</svg>`;
 
 /* ------------------------------ layout ------------------------------ */
-function layout(title, body, { nav = true } = {}) {
+function layout(title, body, { chrome = true, section = '', back = null } = {}) {
   const banner = config.admin.passHash ? '' :
     `<div class="warn">⚠ Estás usando la contraseña de demo. Genera un hash con <code>npm run hash -- "tu-clave"</code> y ponlo en <code>ADMIN_PASS_HASH</code>.</div>`;
   const bannerPausa = config.automatizacionPausada
     ? `<div class="warn">⏸ Automatización pausada — no se manda bienvenida, recordatorio/valor/cierre ni recordatorios de pago. La confirmación de inscripción al pagar sí sigue activa. Quita <code>AUTOMATIZACION_PAUSADA</code> en Railway para reanudar.</div>` : '';
-  const menu = nav ? `<nav class="topnav">
-      <span class="brand">Querify · Admin</span>
-      <div class="links">
-        <a href="/admin">Prospectos</a>
-        <a href="/admin/alumnos">Alumnos</a>
-        <a href="/admin/cohortes">Cohortes</a>
-        <a href="/admin/errores">Errores de envío</a>
-        <a href="/admin/logout" class="out">Salir</a>
-      </div></nav>` : '';
+
+  // `chrome` apaga TODO (topbar + tabbar) — solo para /login. Cualquier otra
+  // página autenticada siempre trae las dos barras: el botón de "volver" del
+  // topbar (cuando `back` aplica) es un atajo corto, pero la tabbar de abajo
+  // siempre deja un camino de regreso a las 3 secciones principales, para no
+  // dejar a nadie "atrapado" en una página de detalle sin salida.
+  const topbar = chrome ? `<header class="topbar">
+      ${back ? `<a class="iconbtn" href="${back}" aria-label="Volver">${svg('atras', 20)}</a>`
+        : `<span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>`}
+      <a class="iconbtn" href="/admin/logout" aria-label="Salir" title="Salir">${svg('salir', 19)}</a>
+    </header>` : '';
+
+  const tabs = [
+    { id: 'alumnos', href: '/admin/alumnos', label: 'Alumnos', ico: 'alumnos' },
+    { id: 'cohortes', href: '/admin/cohortes', label: 'Cohortes', ico: 'cohortes' },
+    { id: 'errores', href: '/admin/errores', label: 'Errores', ico: 'errores' },
+  ];
+  const tabbar = chrome ? `<nav class="tabbar">
+      ${tabs.map(t => `<a href="${t.href}" class="${section === t.id ? 'active' : ''}">${svg(t.ico, 21)}<span>${t.label}</span></a>`).join('')}
+    </nav>` : '';
+
   return `<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)} — Querify Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(title)} — Querify Admin</title>
+<meta name="theme-color" content="#2563EB">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Querify Admin">
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/img/querify-logo.png">
+<link rel="icon" type="image/png" href="/assets/img/querify-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--ink:#0B1524;--ink2:#122036;--line:#24344f;--txt:#E7EEF7;--muted:#93A4BF;--accent:#0EA5C4;--ok:#16A34A;--warn:#F59E0B;--bad:#F87171;--surf:#0F1C31}
-  *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0A1220;color:var(--txt);font-size:15px}
-  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-  .topnav{display:flex;justify-content:space-between;align-items:center;background:var(--ink);border-bottom:1px solid var(--line);padding:14px 22px;position:sticky;top:0;z-index:5}
-  .topnav .brand{font-weight:700;letter-spacing:-.01em}.topnav .links{display:flex;gap:20px;flex-wrap:wrap}.topnav .out{color:var(--muted)}
-  .wrap{max-width:1120px;margin:0 auto;padding:26px 22px}
-  h1{font-size:23px;margin:0 0 4px}h2{font-size:18px;margin:26px 0 12px}.sub{color:var(--muted);margin:0 0 18px}
-  .warn{background:#3a2c07;color:#ffdf9e;border:1px solid #6b5210;padding:10px 14px;border-radius:8px;margin:0 0 16px;font-size:13.5px}
-  code{background:#111e33;padding:1px 6px;border-radius:5px;font-size:.9em}
-  table{width:100%;border-collapse:collapse;background:var(--surf);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
-  th{background:var(--ink2);color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
-  tr:last-child td{border-bottom:none}tr:hover td{background:#0c1a2e}
-  .tag{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
-  .tag.activa{color:#7de3ff;border-color:#164a5c;background:#0c2733}.tag.finalizada{color:#9fb0c8}
-  .tag.wa{color:#8ff0c0;border-color:#155e41}.tag.correo{color:#b9c8de}
-  .pill{font-size:11px;color:var(--muted)}
-  .filters{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}
-  select,input[type=date],input[type=text],input[type=password]{background:#0e1c30;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit}
-  .btn{display:inline-block;background:var(--accent);color:#052730;font-weight:600;border:none;border-radius:8px;padding:9px 15px;cursor:pointer;font-size:14px;font-family:inherit}
-  .btn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}.btn.danger{background:#7f1d1d;color:#fff}
-  .btn:hover{filter:brightness(1.08)}
-  .card{background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:16px}
-  .kv{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;font-size:14.5px}.kv .k{color:var(--muted)}
+  :root{
+    --ink:#0F1E33;--bg:#F6F9FD;--surface:#FFFFFF;--surface-2:#EEF3FB;
+    --line:#E1E9F4;--line-2:#CFDBEC;--text:#12233D;--muted:#51617C;--muted-2:#7A88A0;
+    --accent:#3B82F6;--accent-strong:#2563EB;--accent-ink:#1D4ED8;--accent-soft:#E8F0FE;--accent-line:#C9DCFB;
+    --on-accent:#FFFFFF;--ok:#16A34A;--ok-soft:#E7F7ED;--ok-line:#BBEBCB;--ok-ink:#166534;
+    --warn-soft:#FEF3E0;--warn-line:#F7DCA6;--warn-ink:#92400E;
+    --bad:#DC2626;--bad-soft:#FDEAEA;--bad-line:#F5C2C2;--bad-ink:#991B1B;
+    --font:'Poppins',system-ui,-apple-system,sans-serif;
+    --r-sm:9px;--r-md:13px;--r-lg:18px;
+    --shadow-sm:0 1px 2px rgba(18,35,61,.05);--shadow-md:0 8px 20px rgba(18,35,61,.08);
+    --tabbar-h:62px;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased;
+    overflow-wrap:anywhere;padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom,0px))}
+  a{color:var(--accent-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  img{max-width:100%}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--surface);border-bottom:1px solid var(--line);
+    padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;position:sticky;top:0;z-index:10}
+  .topbar .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink);font-size:15.5px}
+  .topbar .brand img{width:26px;height:26px;display:block}
+  .topbar .brand b{font-weight:700}
+  .iconbtn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;
+    color:var(--muted);border:1.5px solid var(--line-2);flex:0 0 auto}
+  .iconbtn:hover{background:var(--surface-2);text-decoration:none;color:var(--text)}
+  .iconbtn svg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;
+    background:var(--surface);border-top:1px solid var(--line);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
+  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;
+    color:var(--muted-2);font-size:11px;font-weight:600;border-radius:12px}
+  .tabbar a svg{stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tabbar a:hover{text-decoration:none;background:var(--surface-2)}
+  .tabbar a.active{color:var(--accent-strong)}
+  .tabbar a.active svg{stroke-width:2.2}
+
+  .wrap{max-width:720px;margin:0 auto;padding:18px 16px 24px}
+  h1{font-size:21px;margin:0 0 4px;color:var(--ink);letter-spacing:-.01em;font-weight:700}
+  h2{font-size:15.5px;margin:26px 0 10px;color:var(--ink);font-weight:700}
+  h2:first-child{margin-top:0}
+  .sub{color:var(--muted);margin:0 0 16px;font-size:13.5px;line-height:1.5}
+  .warn{background:var(--warn-soft);color:var(--warn-ink);border:1px solid var(--warn-line);padding:10px 14px;border-radius:var(--r-sm);margin:0 0 14px;font-size:12.5px;line-height:1.5}
+  code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:.9em}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow-sm)}
+  .empty{color:var(--muted);padding:34px 20px;text-align:center;font-size:13.5px;background:var(--surface);border:1px dashed var(--line-2);border-radius:var(--r-lg)}
+
+  /* Listas de tarjetas (en vez de tablas) — pensadas para dedo, no para mouse */
+  .list{display:flex;flex-direction:column;gap:9px;margin:0 0 16px}
+  .list-item{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+    padding:13px 16px;box-shadow:var(--shadow-sm);color:inherit}
+  a.list-item:hover{border-color:var(--accent-line);text-decoration:none}
+  .li-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .li-title{font-weight:600;color:var(--ink);font-size:14.5px}
+  .li-meta{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.5}
+  .li-right{text-align:right;flex:0 0 auto;font-size:12.5px;color:var(--muted)}
+
+  .tag{display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-weight:600;white-space:nowrap}
+  .tag.activa{color:var(--accent-ink);border-color:var(--accent-line);background:var(--accent-soft)}
+  .tag.finalizada{color:var(--muted-2)}
+  .tag.ok{color:var(--ok-ink);border-color:var(--ok-line);background:var(--ok-soft)}
+  .tag.bad{color:var(--bad-ink);border-color:var(--bad-line);background:var(--bad-soft)}
+  .tag.whatsapp{color:var(--ok-ink);border-color:var(--ok-line);background:var(--ok-soft)}
+  .tag.correo{color:var(--accent-ink);border-color:var(--accent-line);background:var(--accent-soft)}
+  .pill{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .pill.ok{color:var(--ok-ink);font-weight:600}
+  .pill.bad{color:var(--bad-ink);font-weight:600}
+
+  .filters{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px}
+  .field{margin:0 0 14px}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 6px}
+  select,input[type=date],input[type=text],input[type=password],input[type=email],input[type=tel],textarea{
+    background:var(--surface);color:var(--text);border:1.5px solid var(--line-2);border-radius:var(--r-sm);
+    padding:11px 13px;font-size:14.5px;font-family:inherit;width:100%}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  textarea{resize:vertical}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--accent-strong);color:var(--on-accent);
+    font-weight:600;border:none;border-radius:999px;padding:12px 22px;cursor:pointer;font-size:14.5px;font-family:inherit;
+    transition:transform .1s ease, filter .15s ease;white-space:nowrap}
+  .btn:active{transform:translateY(1px)}
+  .btn:hover{filter:brightness(1.08);text-decoration:none}
+  .btn.ghost{background:transparent;color:var(--text);border:1.5px solid var(--line-2)}
+  .btn.ghost:hover{background:var(--surface-2);filter:none}
+  .btn.danger{background:var(--bad-soft);color:var(--bad-ink);border:1.5px solid var(--bad-line)}
+  .btn.danger:hover{filter:none;background:#FBDADA}
+  .btn.block{width:100%}
+
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:9px 12px;font-size:14px}
+  .kv .k{color:var(--muted);font-size:12.5px;font-weight:600;padding-top:2px}
   .timeline{list-style:none;padding:0;margin:0}
-  .timeline li{border-left:2px solid var(--line);padding:0 0 16px 16px;margin-left:6px;position:relative}
-  .timeline li::before{content:"";position:absolute;left:-6px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
-  .timeline li.fallido::before{background:var(--bad)}.timeline li.entrante::before{background:var(--ok)}
-  .timeline .meta{font-size:12.5px;color:var(--muted)}.timeline .body{margin-top:4px;white-space:pre-wrap;font-size:14px;color:#cdd9ea}
-  .st{font-size:11.5px;padding:1px 7px;border-radius:6px;border:1px solid var(--line)}
-  .st.enviado{color:#8ff0c0}.st.simulado{color:#ffd48a;border-color:#5c4611}.st.fallido{color:var(--bad);border-color:#5c1a1a}.st.recibido{color:#7de3ff}.st.nota{color:var(--muted)}
-  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-  .empty{color:var(--muted);padding:30px;text-align:center}
-  .login{max-width:360px;margin:9vh auto;padding:0 20px}.login .card label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
-  .login input{width:100%}.err{color:var(--bad);font-size:13.5px;margin-top:10px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.grid2,.kv{grid-template-columns:1fr}}
-  .backlink{display:inline-block;margin-bottom:14px;color:var(--muted)}
-</style></head><body>${menu}<div class="wrap">${banner}${bannerPausa}${body}</div></body></html>`;
+  .timeline li{border-left:2px solid var(--line);padding:0 0 16px 16px;margin-left:5px;position:relative}
+  .timeline li::before{content:"";position:absolute;left:-6px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--accent-strong);border:2px solid var(--surface)}
+  .timeline li.fallido::before{background:var(--bad)}
+  .timeline li.entrante::before{background:var(--ok)}
+  .timeline .meta{font-size:12px;color:var(--muted)}
+  .timeline .body{margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;color:var(--text);line-height:1.5}
+  .st{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
+  .st.enviado{color:var(--ok-ink);background:var(--ok-soft)}
+  .st.simulado{color:var(--warn-ink);background:var(--warn-soft)}
+  .st.fallido{color:var(--bad-ink);background:var(--bad-soft)}
+  .st.recibido{color:var(--accent-ink);background:var(--accent-soft)}
+  .st.nota{color:var(--muted);background:var(--surface-2)}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+  .login-wrap{max-width:360px;margin:14vh auto 0;padding:0 20px}
+  .login-wrap .logo{display:block;margin:0 auto 16px;width:50px;height:50px}
+  .login-wrap h1{text-align:center}
+  .login-wrap .sub{text-align:center}
+  .err{color:var(--bad);font-size:13.5px;margin-top:10px}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:600px){.grid2{grid-template-columns:1fr}}
+  .backlink{display:inline-flex;align-items:center;gap:4px;margin-bottom:14px;color:var(--muted);font-size:13.5px;font-weight:600}
+
+  .table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:16px;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:top;white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em;background:var(--surface-2)}
+  tr:last-child td{border-bottom:none}
+
+  /* Plan de pagos del alumno: lista tipo "stepper", no tabla */
+  .pagos{display:flex;flex-direction:column;gap:8px;margin:0 0 16px}
+  .pago-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-md);padding:12px 14px;box-shadow:var(--shadow-sm)}
+  .pago-num{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--surface-2);color:var(--muted);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .pago-row.pagado .pago-num{background:var(--ok-soft);color:var(--ok-ink)}
+  .pago-row.vencido .pago-num{background:var(--bad-soft);color:var(--bad-ink)}
+  .pago-info{flex:1 1 auto;min-width:0}
+  .pago-info .monto{font-weight:600;color:var(--ink);font-size:14px}
+  .pago-info .venc{color:var(--muted);font-size:12.5px;margin-top:1px}
+  .pago-right{flex:0 0 auto;text-align:right}
+</style></head><body>${topbar}<div class="wrap">${banner}${bannerPausa}${body}</div>${tabbar}</body></html>`;
 }
+
+// Manifest de la PWA — instalable desde el celular ("Agregar a pantalla de
+// inicio"). El service worker + push de verdad quedan pendientes (próxima
+// fase, ver ESTADO.md); esto solo deja la base de instalabilidad lista.
+router.get('/manifest.webmanifest', (req, res) => {
+  res.json({
+    name: 'Querify Analytics — Admin',
+    short_name: 'Querify Admin',
+    start_url: '/admin',
+    scope: '/admin',
+    display: 'standalone',
+    background_color: '#F6F9FD',
+    theme_color: '#2563EB',
+    icons: [{ src: '/assets/img/querify-logo.png', sizes: '1254x1254', type: 'image/png', purpose: 'any' }],
+  });
+});
 
 /* ------------------------------ auth ------------------------------ */
 function requireAuth(req, res, next) {
@@ -80,14 +240,17 @@ function requireAuth(req, res, next) {
 }
 
 router.get('/login', (req, res) => {
-  res.send(layout('Entrar', `<div class="login"><div class="card">
-    <h1>Panel de Querify</h1><p class="sub">Ingresa para gestionar prospectos.</p>
-    <form method="post" action="/admin/login">
-      <label>Usuario</label><input type="text" name="user" autocomplete="username" autofocus>
-      <label>Contraseña</label><input type="password" name="password" autocomplete="current-password">
-      <div style="margin-top:16px"><button class="btn" type="submit">Entrar</button></div>
-      ${req.query.e ? '<p class="err">Usuario o contraseña incorrectos.</p>' : ''}
-    </form></div></div>`, { nav: false }));
+  res.send(layout('Entrar', `<div class="login-wrap">
+    <img class="logo" src="/assets/img/querify-logo.png" alt="">
+    <h1>Panel de Querify</h1><p class="sub">Ingresa para administrar la academia.</p>
+    <div class="card">
+      <form method="post" action="/admin/login">
+        <div class="field"><label>Usuario</label><input type="text" name="user" autocomplete="username" autofocus></div>
+        <div class="field" style="margin-bottom:6px"><label>Contraseña</label><input type="password" name="password" autocomplete="current-password"></div>
+        ${req.query.e ? '<p class="err">Usuario o contraseña incorrectos.</p>' : ''}
+        <button class="btn block" type="submit" style="margin-top:10px">Entrar</button>
+      </form>
+    </div></div>`, { chrome: false }));
 });
 
 router.post('/login', async (req, res) => {
@@ -100,12 +263,17 @@ router.post('/login', async (req, res) => {
   }
   if (!ok) return res.redirect('/admin/login?e=1');
   req.session.admin = { user };
-  res.redirect('/admin');
+  res.redirect('/admin/alumnos');
 });
 
 router.get('/logout', (req, res) => { req.session.destroy(() => res.redirect('/admin/login')); });
 
-/* --------------------------- lista de prospectos --------------------------- */
+/* --------------------------- lista de prospectos ---------------------------
+   Ya no está en el menú (ver ESTADO.md, 15 oct 2026 — los prospectos ahora
+   se llevan a mano en WhatsApp Business) pero la ruta se deja intacta: los
+   datos históricos siguen aquí y /admin/prospecto/:id sigue funcionando
+   (ej. para revisar el timeline de alguien que sí alcanzó a quedar
+   registrado antes del cambio). */
 router.get('/', requireAuth, async (req, res) => {
   const { estado = '', curso = '' } = req.query;
   const cond = [], params = [];
@@ -135,18 +303,18 @@ router.get('/', requireAuth, async (req, res) => {
       <td class="pill">${fmt(p.fecha_ultimo_mensaje)}</td>
     </tr>`).join('');
 
-  const tabla = rows.length ? `<table>
+  const tabla = rows.length ? `<div class="table-wrap"><table>
     <thead><tr><th>Nombre</th><th>Curso</th><th>WhatsApp</th><th>Correo</th><th>Canal</th><th>Paso</th><th>Estado</th><th>Registro</th><th>Últ. mensaje</th></tr></thead>
-    <tbody>${filas}</tbody></table>` : '<div class="card empty">Aún no hay prospectos. Envía el formulario del sitio para ver el primero aquí.</div>';
+    <tbody>${filas}</tbody></table></div>` : '<div class="empty">Aún no hay prospectos.</div>';
 
-  res.send(layout('Prospectos', `<h1>Prospectos</h1><p class="sub">${rows.length} registro(s).</p>${filtros}${tabla}`));
+  res.send(layout('Prospectos', `<h1>Prospectos</h1><p class="sub">${rows.length} registro(s) — histórico, ya no se alimenta del sitio.</p>${filtros}${tabla}`, { back: '/admin/alumnos' }));
 });
 
 /* --------------------------- detalle de prospecto --------------------------- */
 router.get('/prospecto/:id', requireAuth, async (req, res) => {
   const { rows } = await query(`SELECT * FROM prospectos WHERE id = $1`, [req.params.id]);
   const p = rows[0];
-  if (!p) return res.status(404).send(layout('No encontrado', '<a class="backlink" href="/admin">← Prospectos</a><div class="card empty">Prospecto no encontrado.</div>'));
+  if (!p) return res.status(404).send(layout('No encontrado', '<div class="empty">Prospecto no encontrado.</div>', { back: '/admin' }));
 
   const msgs = (await query(`SELECT * FROM mensajes WHERE prospecto_id = $1 ORDER BY created_at ASC`, [req.params.id])).rows;
   const tl = msgs.length ? `<ul class="timeline">${msgs.map(m => `<li class="${m.estado === 'fallido' ? 'fallido' : m.tipo === 'entrante' ? 'entrante' : ''}">
@@ -155,18 +323,17 @@ router.get('/prospecto/:id', requireAuth, async (req, res) => {
     : '<p class="sub">Sin mensajes todavía.</p>';
 
   const activa = p.estado_secuencia === 'activa';
-  const aviso = req.query.enviado ? `<p class="pill" style="color:#8ff0c0">✓ Mensaje mandado.</p>`
-    : req.query.error ? `<p class="pill" style="color:var(--bad)">✗ No se pudo mandar: ${esc(req.query.error)}</p>` : '';
+  const aviso = req.query.enviado ? `<p class="pill ok">✓ Mensaje mandado.</p>`
+    : req.query.error ? `<p class="pill bad">✗ No se pudo mandar: ${esc(req.query.error)}</p>` : '';
   const responder = p.telefono ? `
       <div class="card"><h2 style="margin-top:0">Responder por WhatsApp</h2>
         <p class="sub">Texto libre — solo funciona dentro de las 24h después de su último mensaje. Fuera de esa ventana, WhatsApp lo va a rechazar (hay que esperar a que vuelva a escribir).</p>
         <form method="post" action="/admin/prospecto/${p.id}/enviar-mensaje">
-          <textarea name="texto" rows="3" style="width:100%" placeholder="Escribe tu respuesta..." required></textarea>
-          <button class="btn" type="submit" style="margin-top:8px">Mandar</button>
+          <textarea name="texto" rows="3" placeholder="Escribe tu respuesta..." required></textarea>
+          <button class="btn" type="submit" style="margin-top:10px">Mandar</button>
         </form>
       </div>` : '';
   res.send(layout(p.nombre, `
-    <a class="backlink" href="/admin">← Prospectos</a>
     <h1>${esc(p.nombre)}</h1>
     <p class="sub">Registrado el ${fmt(p.fecha_registro)} · origen: ${esc(p.origen)}</p>
     ${aviso}
@@ -185,13 +352,14 @@ router.get('/prospecto/:id', requireAuth, async (req, res) => {
         <div class="k">Últ. respuesta</div><div>${fmt(p.fecha_ultimo_entrante)}</div>
       </div>
       <div class="actions">
-        ${activa ? `<form method="post" action="/admin/prospecto/${p.id}/responder"><button class="btn" type="submit">Marcar como respondió</button></form>
+        ${activa ? `<form method="post" action="/admin/prospecto/${p.id}/responder"><button class="btn ghost" type="submit">Marcar como respondió</button></form>
         <form method="post" action="/admin/prospecto/${p.id}/pausar"><button class="btn danger" type="submit">Pausar / detener</button></form>`
         : '<span class="pill">Secuencia finalizada. El seguimiento continúa manualmente.</span>'}
       </div></div>
     </div>
     ${responder}
-    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`));
+    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
+    { back: '/admin' }));
 });
 
 router.post('/prospecto/:id/enviar-mensaje', requireAuth, async (req, res) => {
@@ -199,7 +367,7 @@ router.post('/prospecto/:id/enviar-mensaje', requireAuth, async (req, res) => {
   if (!texto) return res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent('Escribe algo primero.')}`);
   const { rows } = await query(`SELECT * FROM prospectos WHERE id = $1`, [req.params.id]);
   const p = rows[0];
-  if (!p) return res.status(404).send(layout('No encontrado', '<a class="backlink" href="/admin">← Prospectos</a><div class="card empty">Prospecto no encontrado.</div>'));
+  if (!p) return res.status(404).send(layout('No encontrado', '<div class="empty">Prospecto no encontrado.</div>', { back: '/admin' }));
   const r = await engine.responderManual(p, texto);
   if (r.ok) return res.redirect(`/admin/prospecto/${req.params.id}?enviado=1`);
   res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent(r.error || 'error desconocido')}`);
@@ -222,15 +390,18 @@ router.get('/errores', requireAuth, async (req, res) => {
   const { rows } = await query(
     `SELECT m.*, p.nombre FROM mensajes m JOIN prospectos p ON p.id = m.prospecto_id
      WHERE m.estado = 'fallido' ORDER BY m.created_at DESC`);
-  const tabla = rows.length ? `<table>
-    <thead><tr><th>Fecha</th><th>Prospecto</th><th>Tipo</th><th>Canal</th><th>Motivo</th></tr></thead>
-    <tbody>${rows.map(m => `<tr>
-      <td class="pill">${fmt(m.created_at)}</td>
-      <td><a href="/admin/prospecto/${m.prospecto_id}">${esc(m.nombre)}</a></td>
-      <td>${esc(m.tipo)}</td><td>${esc(m.canal)}</td>
-      <td style="color:#f7a5a5">${esc(m.error || '')}</td></tr>`).join('')}</tbody></table>`
-    : '<div class="card empty">Sin errores de envío. 🎉</div>';
-  res.send(layout('Errores de envío', `<h1>Errores de envío</h1><p class="sub">Fallos de WhatsApp o correo, para no perder prospectos por fallas silenciosas.</p>${tabla}`));
+  const lista = rows.length ? `<div class="list">${rows.map(m => `
+    <a class="list-item" href="/admin/prospecto/${m.prospecto_id}">
+      <div class="li-top">
+        <div><div class="li-title">${esc(m.nombre)}</div>
+          <div class="li-meta">${esc(m.tipo)} · ${esc(m.canal)}</div>
+          <div class="li-meta" style="color:var(--bad-ink)">⚠ ${esc(m.error || '')}</div>
+        </div>
+        <div class="li-right">${fmt(m.created_at)}</div>
+      </div>
+    </a>`).join('')}</div>`
+    : '<div class="empty">Sin errores de envío. 🎉</div>';
+  res.send(layout('Errores de envío', `<h1>Errores de envío</h1><p class="sub">Fallos de WhatsApp o correo, para no perder a nadie por fallas silenciosas.</p>${lista}`, { section: 'errores' }));
 });
 
 /* ------------------------------ cohortes ------------------------------ */
@@ -243,33 +414,43 @@ router.get('/cohortes', requireAuth, async (req, res) => {
   const { rows } = await query(`SELECT * FROM cohortes ORDER BY curso, fecha_inicio NULLS LAST, modalidad`);
   const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python'];
 
-  const filas = rows.map(r => `<tr>
-      <td>${esc(r.curso)}</td><td>${label(r.modalidad)}</td>
-      <td><input type="date" name="fecha_${r.id}" value="${r.fecha_inicio ? new Date(r.fecha_inicio).toISOString().slice(0, 10) : ''}"></td>
-      <td><input type="text" inputmode="numeric" style="width:70px" name="cupo_${r.id}" value="${r.cupo_maximo}"></td>
-      <td class="pill">${r.lugares_ocupados} / ${r.cupo_maximo} ocupados</td>
-    </tr>`).join('');
+  const tarjetas = rows.map(r => `
+    <div class="card" style="margin-bottom:10px">
+      <div class="li-top" style="margin-bottom:12px">
+        <div class="li-title">${esc(r.curso)} <span class="pill" style="margin:0">· ${label(r.modalidad)}</span></div>
+        <span class="tag ${r.lugares_ocupados >= r.cupo_maximo ? 'bad' : 'ok'}">${r.lugares_ocupados} / ${r.cupo_maximo} ocupados</span>
+      </div>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0"><label>Fecha de inicio</label>
+          <input type="date" name="fecha_${r.id}" value="${r.fecha_inicio ? new Date(r.fecha_inicio).toISOString().slice(0, 10) : ''}"></div>
+        <div class="field" style="margin-bottom:0"><label>Cupo máximo</label>
+          <input type="text" inputmode="numeric" name="cupo_${r.id}" value="${r.cupo_maximo}"></div>
+      </div>
+    </div>`).join('');
 
   res.send(layout('Cohortes', `
     <h1>Cohortes</h1>
-    <p class="sub">Cada fila es una generación de un curso (curso + modalidad + fecha de inicio). El mensaje de "valor" (72h) toma automáticamente la cohorte futura más cercana del curso; el sitio solo muestra cohortes con cupo disponible.</p>
-    <form method="post" action="/admin/cohortes"><table>
-      <thead><tr><th>Curso</th><th>Modalidad</th><th>Fecha de inicio</th><th>Cupo máximo</th><th>Ocupación</th></tr></thead>
-      <tbody>${filas}</tbody></table>
-      <div style="margin-top:16px"><button class="btn" type="submit">Guardar cambios</button>
-      ${req.query.ok ? '<span class="pill" style="margin-left:12px;color:#8ff0c0">✓ Guardado</span>' : ''}</div>
+    <p class="sub">Cada tarjeta es una generación de un curso (curso + modalidad + fecha de inicio). El mensaje de "valor" toma automáticamente la cohorte futura más cercana del curso; el sitio solo muestra cohortes con cupo disponible.</p>
+    <form method="post" action="/admin/cohortes">
+      ${tarjetas}
+      <div style="margin:4px 0 24px">
+        <button class="btn block" type="submit">Guardar cambios</button>
+        ${req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado</p>' : ''}
+      </div>
     </form>
 
     <h2>Nueva cohorte</h2>
     <div class="card">
-      <form method="post" action="/admin/cohortes/nueva" class="filters">
-        <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
-        <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select>
-        <input type="date" name="fecha_inicio" required>
-        <input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10" style="width:80px">
-        <button class="btn ghost" type="submit">Agregar cohorte</button>
+      <form method="post" action="/admin/cohortes/nueva">
+        <div class="field"><label>Curso</label>
+          <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Modalidad</label>
+          <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select></div>
+        <div class="field"><label>Fecha de inicio</label><input type="date" name="fecha_inicio" required></div>
+        <div class="field"><label>Cupo</label><input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10"></div>
+        <button class="btn ghost block" type="submit">Agregar cohorte</button>
       </form>
-    </div>`));
+    </div>`, { section: 'cohortes' }));
 });
 
 router.post('/cohortes', requireAuth, async (req, res) => {
@@ -310,17 +491,18 @@ router.get('/alumnos', requireAuth, async (req, res) => {
     GROUP BY a.id, c.curso, c.modalidad, c.fecha_inicio
     ORDER BY a.fecha_alta DESC`);
 
-  const filas = rows.map(a => `<tr>
-      <td><a href="/admin/alumno/${a.id}"><b>${esc(a.nombre)}</b></a>${a.archivado ? ' <span class="tag">archivado</span>' : ''}</td>
-      <td>${esc(a.curso)} <span class="pill">${label(a.modalidad)}</span></td>
-      <td class="pill">${a.fecha_inicio ? new Date(a.fecha_inicio).toLocaleDateString('es-MX') : '—'}</td>
-      <td>${a.pagados} / 5 pagados${a.vencidos > 0 ? ` <span class="tag" style="color:var(--bad);border-color:#5c1a1a">${a.vencidos} vencido(s)</span>` : ''}</td>
-      <td class="pill">${fmt(a.fecha_alta)}</td>
-    </tr>`).join('');
-
-  const tabla = rows.length ? `<table>
-    <thead><tr><th>Alumno</th><th>Curso</th><th>Inicio</th><th>Pagos</th><th>Alta</th></tr></thead>
-    <tbody>${filas}</tbody></table>` : '<div class="card empty">Aún no hay alumnos inscritos.</div>';
+  const lista = rows.length ? `<div class="list">${rows.map(a => `
+    <a class="list-item" href="/admin/alumno/${a.id}">
+      <div class="li-top">
+        <div><div class="li-title">${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
+          <div class="li-meta">${esc(a.curso)} · ${label(a.modalidad)} · inicia ${fmtDia(a.fecha_inicio)}</div>
+        </div>
+        <div class="li-right">
+          <span class="tag ${a.vencidos > 0 ? 'bad' : a.pagados >= 5 ? 'ok' : ''}">${a.pagados} / 5 pagados</span>
+          ${a.vencidos > 0 ? `<div style="margin-top:5px"><span class="tag bad">${a.vencidos} vencido(s)</span></div>` : ''}
+        </div>
+      </div>
+    </a>`).join('')}</div>` : '<div class="empty">Aún no hay alumnos inscritos.</div>';
 
   // Cohortes con cupo disponible, para el selector del alta manual — se
   // muestran aunque no tengan fecha (igual que /admin/cohortes), pero esas
@@ -330,30 +512,32 @@ router.get('/alumnos', requireAuth, async (req, res) => {
      WHERE fecha_inicio IS NOT NULL AND lugares_ocupados < cupo_maximo
      ORDER BY curso, fecha_inicio`)).rows;
   const cohorteOpts = cohortesRows.map(c =>
-    `<option value="${c.id}">${esc(c.curso)} · ${label(c.modalidad)} · ${new Date(c.fecha_inicio).toLocaleDateString('es-MX')} (${c.cupo_maximo - c.lugares_ocupados} lugar${c.cupo_maximo - c.lugares_ocupados === 1 ? '' : 'es'})</option>`
+    `<option value="${c.id}">${esc(c.curso)} · ${label(c.modalidad)} · ${fmtDia(c.fecha_inicio)} (${c.cupo_maximo - c.lugares_ocupados} lugar${c.cupo_maximo - c.lugares_ocupados === 1 ? '' : 'es'})</option>`
   ).join('');
 
-  const aviso = req.query.error ? `<p class="pill" style="color:var(--bad)">✗ ${esc(req.query.error)}</p>` : '';
+  const aviso = req.query.error ? `<p class="pill bad">✗ ${esc(req.query.error)}</p>` : '';
 
   res.send(layout('Alumnos', `
     <h1>Alumnos</h1>
     <p class="sub">${rows.length} inscrito(s). Se crean automáticamente al confirmarse el pago 1 por Stripe, o manualmente aquí abajo para quien pagó por transferencia.</p>
-    ${tabla}
+    ${lista}
     <h2>Dar de alta un alumno manualmente</h2>
     <p class="sub">Para quien ya pagó el primer apartado por transferencia u otro medio fuera de Stripe. Entra igual al flujo automático de recordatorios de los pagos 2-5 — correo es obligatorio porque es el único canal que usan esos recordatorios.</p>
     <div class="card">
       ${aviso}
-      <form method="post" action="/admin/alumnos/nuevo" class="filters" style="flex-direction:column;align-items:stretch;gap:12px;max-width:420px">
-        <select name="cohorteId" required>
-          <option value="">Curso y fecha de inicio…</option>
-          ${cohorteOpts}
-        </select>
-        <input type="text" name="nombre" placeholder="Nombre completo" required>
-        <input type="tel" inputmode="numeric" name="whatsapp" placeholder="WhatsApp (10 dígitos, opcional — se asume +52)">
-        <input type="email" name="correo" placeholder="Correo (obligatorio)" required>
-        <button class="btn" type="submit" style="align-self:flex-start">Dar de alta</button>
+      <form method="post" action="/admin/alumnos/nuevo">
+        <div class="field"><label>Curso y fecha de inicio</label>
+          <select name="cohorteId" required>
+            <option value="">Elige una cohorte…</option>
+            ${cohorteOpts}
+          </select></div>
+        <div class="field"><label>Nombre completo</label><input type="text" name="nombre" placeholder="Nombre completo" required></div>
+        <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
+        <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
+          <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
+        <button class="btn block" type="submit">Dar de alta</button>
       </form>
-    </div>`));
+    </div>`, { section: 'alumnos' }));
 });
 
 router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
@@ -383,17 +567,22 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     `SELECT a.*, c.curso, c.modalidad, c.fecha_inicio FROM alumnos a JOIN cohortes c ON c.id = a.cohorte_id WHERE a.id = $1`,
     [req.params.id]);
   const a = rows[0];
-  if (!a) return res.status(404).send(layout('No encontrado', '<a class="backlink" href="/admin/alumnos">← Alumnos</a><div class="card empty">Alumno no encontrado.</div>'));
+  if (!a) return res.status(404).send(layout('No encontrado', '<div class="empty">Alumno no encontrado.</div>', { back: '/admin/alumnos' }));
 
   const pagos = (await query(`SELECT * FROM pagos WHERE alumno_id = $1 ORDER BY numero_pago ASC`, [req.params.id])).rows;
-  const filasPago = pagos.map(p => `<tr>
-      <td>${p.numero_pago} / 5</td>
-      <td>$${Number(p.monto).toFixed(2)} MXN</td>
-      <td class="pill">${new Date(p.fecha_vencimiento).toLocaleDateString('es-MX')}</td>
-      <td><span class="tag ${p.estado === 'pagado' ? 'activa' : ''}" style="${p.estado === 'vencido' ? 'color:var(--bad);border-color:#5c1a1a' : ''}">${p.estado}</span></td>
-      <td class="pill">${p.fecha_pago ? fmt(p.fecha_pago) : '—'}${p.metodo ? ` (${p.metodo})` : ''}</td>
-      <td>${p.estado !== 'pagado' ? `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn ghost" type="submit">Marcar pagado</button></form>` : ''}</td>
-    </tr>`).join('');
+  const filasPago = pagos.map(p => `
+    <div class="pago-row ${p.estado}">
+      <div class="pago-num">${p.estado === 'pagado' ? '✓' : p.numero_pago}</div>
+      <div class="pago-info">
+        <div class="monto">Pago ${p.numero_pago}/5 — $${Number(p.monto)} MXN</div>
+        <div class="venc">Vence ${fmtDia(p.fecha_vencimiento)}${p.fecha_pago ? ` · pagado ${fmt(p.fecha_pago)}${p.metodo ? ` (${p.metodo})` : ''}` : ''}</div>
+      </div>
+      <div class="pago-right">
+        ${p.estado === 'pagado' ? `<span class="tag ok">pagado</span>`
+          : p.estado === 'vencido' ? `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn danger sm" type="submit" style="padding:7px 13px;font-size:12.5px">Vencido · marcar pagado</button></form>`
+          : `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn ghost sm" type="submit" style="padding:7px 13px;font-size:12.5px">Marcar pagado</button></form>`}
+      </div>
+    </div>`).join('');
 
   const msgs = (await query(`SELECT * FROM mensajes WHERE alumno_id = $1 ORDER BY created_at ASC`, [req.params.id])).rows;
   const tl = msgs.length ? `<ul class="timeline">${msgs.map(m => `<li class="${m.estado === 'fallido' ? 'fallido' : ''}">
@@ -401,27 +590,26 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       <div class="body">${esc(m.error ? '⚠ ' + m.error : m.contenido)}</div></li>`).join('')}</ul>`
     : '<p class="sub">Sin mensajes todavía.</p>';
 
-  const aviso = req.query.creado ? `<p class="pill" style="color:#8ff0c0">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
+  const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
 
   res.send(layout(a.nombre, `
-    <a class="backlink" href="/admin/alumnos">← Alumnos</a>
     <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
-    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${new Date(a.fecha_inicio).toLocaleDateString('es-MX')}</p>
+    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)}</p>
     ${aviso}
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
-      <div class="k">Prospecto de origen</div><div>${a.prospecto_id ? `<a href="/admin/prospecto/${a.prospecto_id}">#${a.prospecto_id}</a>` : '— (inscripción directa)'}</div>
+      <div class="k">Prospecto</div><div>${a.prospecto_id ? `<a href="/admin/prospecto/${a.prospecto_id}">#${a.prospecto_id}</a>` : '— (inscripción directa)'}</div>
     </div>
       <div class="actions">
         <form method="post" action="/admin/alumno/${a.id}/${a.archivado ? 'desarchivar' : 'archivar'}">
-          <button class="btn ${a.archivado ? '' : 'danger'}" type="submit">${a.archivado ? 'Reactivar recordatorios de pago' : 'Archivar (dejar de mandar recordatorios de pago)'}</button>
+          <button class="btn ${a.archivado ? 'ghost' : 'danger'}" type="submit">${a.archivado ? 'Reactivar recordatorios de pago' : 'Archivar (dejar de mandar recordatorios)'}</button>
         </form>
       </div></div>
     <h2>Plan de pagos</h2>
-    <table><thead><tr><th>Pago</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th>Fecha de pago</th><th></th></tr></thead>
-      <tbody>${filasPago}</tbody></table>
-    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`));
+    <div class="pagos">${filasPago}</div>
+    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
+    { back: '/admin/alumnos', section: 'alumnos' }));
 });
 
 router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {

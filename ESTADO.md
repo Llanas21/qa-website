@@ -33,11 +33,54 @@ tiempo. Decisiones tomadas en esa conversación:
 - Notificaciones push: arrancar con eventos de **pagos** (recibido,
   vencido, fallido) — no con errores técnicos del sitio (segunda
   prioridad, no la primera).
-- La PWA/push todavía **no está construida** — esto quedó como la
-  dirección a seguir, pero la primera función concreta que se pidió fue
-  el alta manual de alumnos (ver abajo). El trabajo de manifest.json +
-  service worker + Web Push (VAPID) + quitar "Prospectos" del nav
-  sigue pendiente.
+- El **push de verdad** (service worker + suscripción + VAPID + disparar
+  la notificación en los eventos de pago) todavía **no está construido**
+  — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
+  instalabilidad de la PWA (manifest) y el rediseño completo del panel
+  (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Rediseño completo del panel admin, mobile-first (15 oct 2026)**
+  — antes era un panel de prospectos con tema oscuro genérico, sin
+  relación visual con el sitio público. Ahora:
+  - Misma identidad que el sitio público: mismos tokens de color/tipografía
+    de `querify-web/assets/css/styles.css` (azul `#2563EB`, Poppins,
+    radios/sombras discretas) copiados directo al `<style>` de `layout()`
+    en `admin.js` — ya no son hojas de estilo separadas de verdad, pero
+    se ven como una sola marca.
+  - **Navegación tipo app**: barra superior (logo o flecha "atrás" + botón
+    de salir) + **barra inferior fija de 3 pestañas** (Alumnos, Cohortes,
+    Errores — con `env(safe-area-inset-bottom)` para no chocar con el
+    home indicator de iPhone). "Prospectos" ya no tiene pestaña (sigue
+    accesible por URL directa para consultar histórico, pero fuera de la
+    navegación principal).
+  - **Tablas densas reemplazadas por tarjetas/listas** en las secciones
+    que importan en celular: lista de alumnos, cohortes (una tarjeta por
+    generación en vez de una fila de tabla ancha), plan de pagos de un
+    alumno (lista tipo "stepper" con ✓/número y estado con color), y
+    errores de envío (se lee como un feed de notificaciones — encaja
+    bien con que más adelante esto mismo dispare push reales). La tabla
+    de prospectos (no prioritaria) se dejó como tabla, solo envuelta en
+    un contenedor con scroll horizontal para no romper el layout.
+  - **Base de PWA instalable**: `<link rel="manifest">` nuevo
+    (`GET /admin/manifest.webmanifest`, `start_url: /admin`, ícono del
+    logo, `display: standalone`) + meta tags de `theme-color` y
+    `apple-mobile-web-app-*`. El service worker y el push en sí
+    (`VAPID`, tabla de suscripciones, disparar notificación en
+    pago recibido/vencido/fallido) son la siguiente fase, no estaban en
+    el alcance de esto.
+  - **Bug real encontrado y corregido durante las pruebas**: las ligas
+    largas de Stripe en el historial de mensajes (sin espacios) rompían
+    el ancho de toda la página en celular — `overflow-wrap` no estaba
+    puesto en `.timeline .body` (ni en `body` como red de seguridad
+    general). Se corrigió y se verificó por código (`scrollWidth` ==
+    `clientWidth`) en las 6 páginas principales, no solo a ojo.
+  - Probado con Puppeteer emulando un iPhone de verdad (no solo
+    `--window-size`, esa técnica ya se sabe que da falsos positivos —
+    ver nota de la sesión del 15 ago) + una prueba funcional real
+    (marcar un pago como pagado) para confirmar que el cambio visual no
+    rompió ninguna lógica.
+  - Toda la lógica de negocio (queries, validaciones, redirects) quedó
+    exactamente igual — este fue un cambio 100% de presentación.
 
 - [x] **Alta manual de alumnos desde el panel** (15 oct 2026) — para
   quien paga por transferencia u otro medio fuera de Stripe. Nuevo
