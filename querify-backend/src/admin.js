@@ -33,8 +33,36 @@ const ICO = {
   atras: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
   menu: '<path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>',
   cerrar: '<path d="M18 6 6 18"/><path d="M6 6l12 12"/>',
+  mas: '<path d="M12 5v14"/><path d="M5 12h14"/>',
 };
 const svg = (nombre, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${ICO[nombre]}</svg>`;
+
+// Botón flotante (FAB) + hoja/modal que se desliza desde abajo — patrón
+// reutilizable para "agregar algo" (alumno, cohorte...) sin ocupar espacio
+// fijo en la pantalla con un formulario siempre visible. `autoOpen` lo abre
+// solo al cargar (ej. cuando el intento anterior falló y hay un error que
+// mostrar ahí mismo, no en la página de fondo).
+function fabModal({ id, label, titulo, contenido, autoOpen = false }) {
+  return `
+    <button class="fab" id="${id}Btn" aria-label="${esc(label)}" type="button">${svg('mas', 26)}</button>
+    <div class="modal-overlay" id="${id}Overlay"></div>
+    <div class="modal-sheet" id="${id}" aria-hidden="true">
+      <div class="modal-head"><h3>${esc(titulo)}</h3><button class="iconbtn" id="${id}Close" type="button" aria-label="Cerrar">${svg('cerrar', 18)}</button></div>
+      <div class="modal-body">${contenido}</div>
+    </div>
+    <script>
+      (function(){
+        var btn=document.getElementById('${id}Btn'), overlay=document.getElementById('${id}Overlay'),
+            panel=document.getElementById('${id}'), close=document.getElementById('${id}Close');
+        function abrir(){panel.classList.add('open');overlay.classList.add('open');panel.setAttribute('aria-hidden','false')}
+        function cerrar(){panel.classList.remove('open');overlay.classList.remove('open');panel.setAttribute('aria-hidden','true')}
+        btn.addEventListener('click', abrir);
+        overlay.addEventListener('click', cerrar);
+        close.addEventListener('click', cerrar);
+        ${autoOpen ? 'abrir();' : ''}
+      })();
+    </script>`;
+}
 
 /* ------------------------------ layout ------------------------------ */
 function layout(title, body, { chrome = true, section = '', back = null } = {}) {
@@ -68,24 +96,22 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
     <nav class="drawer" id="drawer" aria-hidden="true" aria-label="Menú principal">
       <div class="drawer-head">
         <span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>
-        <button class="iconbtn" id="drawerClose" aria-label="Cerrar menú" type="button">${svg('cerrar', 18)}</button>
       </div>
       <div class="drawer-links">
         ${tabs.map(t => `<a href="${t.href}" class="drawer-link ${section === t.id ? 'active' : ''}">${svg(t.ico, 20)}<span>${t.label}</span></a>`).join('')}
       </div>
       <div class="drawer-sep"></div>
-      <a href="/admin/logout" class="drawer-link">${svg('salir', 20)}<span>Salir</span></a>
+      <a href="/admin/logout" class="drawer-link drawer-logout">${svg('salir', 20)}<span>Salir</span></a>
     </nav>
     <script>
       (function(){
         var btn=document.getElementById('menuBtn'), overlay=document.getElementById('drawerOverlay'),
-            panel=document.getElementById('drawer'), close=document.getElementById('drawerClose');
+            panel=document.getElementById('drawer');
         if(!btn||!panel) return;
         function abrir(){panel.classList.add('open');overlay.classList.add('open');btn.setAttribute('aria-expanded','true');panel.setAttribute('aria-hidden','false')}
         function cerrar(){panel.classList.remove('open');overlay.classList.remove('open');btn.setAttribute('aria-expanded','false');panel.setAttribute('aria-hidden','true')}
         btn.addEventListener('click', abrir);
         overlay.addEventListener('click', cerrar);
-        close.addEventListener('click', cerrar);
       })();
     </script>` : '';
 
@@ -154,7 +180,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .drawer-link:hover{background:var(--surface-2);text-decoration:none}
   .drawer-link.active{color:var(--accent-strong);background:var(--accent-soft)}
   .drawer-sep{height:1px;background:var(--line);margin:4px 14px}
-  .drawer .drawer-link:last-child{margin:6px 10px 14px}
+  .drawer-logout{margin:6px 10px 14px}
 
   .wrap{max-width:720px;margin:0 auto;padding:18px 16px 24px}
   h1{font-size:21px;margin:0 0 4px;color:var(--ink);letter-spacing:-.01em;font-weight:700}
@@ -197,7 +223,12 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   /* input[type=date] en Safari/iOS puede insistir en un ancho mínimo propio y
      salirse de su contenedor pase lo que diga width:100% — esto fuerza que al
      menos no se salga visualmente de la tarjeta blanca (ver ESTADO.md, 15 oct 2026). */
-  input[type=date]{min-width:0}
+  input[type=date]{min-width:0;text-align:left}
+  /* Safari centra el valor del input de fecha por dentro de un pseudo-elemento
+     propio (::-webkit-date-and-time-value), que ignora el text-align normal
+     del input — hace falta apuntarle directo para que quede a la izquierda
+     igual que los demás campos (ver ESTADO.md, 15 oct 2026). */
+  input[type=date]::-webkit-date-and-time-value{text-align:left}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent)}
   textarea{resize:vertical}
 
@@ -241,6 +272,26 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
 
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   @media(max-width:600px){.grid2{grid-template-columns:1fr}}
+
+  /* Botón flotante + hoja modal — para formularios de "agregar algo" que no
+     necesitan estar siempre visibles ocupando la pantalla (alumno, cohorte). */
+  .fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));width:56px;height:56px;
+    border-radius:50%;background:var(--accent-strong);color:var(--on-accent);border:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);z-index:15}
+  .fab:hover{filter:brightness(1.08)}
+  .fab:active{transform:translateY(1px)}
+  .fab svg{stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .modal-overlay{position:fixed;inset:0;background:rgba(15,30,51,.35);opacity:0;visibility:hidden;
+    transition:opacity .2s ease;z-index:30}
+  .modal-overlay.open{opacity:1;visibility:visible}
+  .modal-sheet{position:fixed;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;background:var(--surface);
+    border-radius:18px 18px 0 0;box-shadow:var(--shadow-md);z-index:31;transform:translateY(100%);
+    transition:transform .22s ease;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .modal-sheet.open{transform:translateY(0)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 10px 10px 20px;
+    position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line)}
+  .modal-head h3{margin:0;font-size:16px;color:var(--ink)}
+  .modal-body{padding:16px 20px 22px}
   .backlink{display:inline-flex;align-items:center;gap:4px;margin-bottom:14px;color:var(--muted);font-size:13.5px;font-weight:600}
 
   .table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);margin-bottom:16px;-webkit-overflow-scrolling:touch}
@@ -374,7 +425,6 @@ router.get('/prospecto/:id', requireAuth, async (req, res) => {
     : req.query.error ? `<p class="pill bad">✗ No se pudo mandar: ${esc(req.query.error)}</p>` : '';
   const responder = p.telefono ? `
       <div class="card"><h2 style="margin-top:0">Responder por WhatsApp</h2>
-        <p class="sub">Texto libre — solo funciona dentro de las 24h después de su último mensaje. Fuera de esa ventana, WhatsApp lo va a rechazar (hay que esperar a que vuelva a escribir).</p>
         <form method="post" action="/admin/prospecto/${p.id}/enviar-mensaje">
           <textarea name="texto" rows="3" placeholder="Escribe tu respuesta..." required></textarea>
           <button class="btn" type="submit" style="margin-top:10px">Mandar</button>
@@ -448,7 +498,7 @@ router.get('/errores', requireAuth, async (req, res) => {
       </div>
     </a>`).join('')}</div>`
     : '<div class="empty">Sin errores de envío. 🎉</div>';
-  res.send(layout('Errores de envío', `<h1>Errores de envío</h1><p class="sub">Fallos de WhatsApp o correo, para no perder a nadie por fallas silenciosas.</p>${lista}`, { section: 'errores' }));
+  res.send(layout('Errores de envío', `<h1>Errores de envío</h1>${lista}`, { section: 'errores' }));
 });
 
 /* ------------------------------ cohortes ------------------------------ */
@@ -477,7 +527,6 @@ router.get('/cohortes', requireAuth, async (req, res) => {
 
   res.send(layout('Cohortes', `
     <h1>Cohortes</h1>
-    <p class="sub">Cada tarjeta es una generación de un curso (curso + modalidad + fecha de inicio). El mensaje de "valor" toma automáticamente la cohorte futura más cercana del curso; el sitio solo muestra cohortes con cupo disponible.</p>
     <form method="post" action="/admin/cohortes">
       ${tarjetas}
       <div style="margin:4px 0 24px">
@@ -485,19 +534,19 @@ router.get('/cohortes', requireAuth, async (req, res) => {
         ${req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado</p>' : ''}
       </div>
     </form>
-
-    <h2>Nueva cohorte</h2>
-    <div class="card">
-      <form method="post" action="/admin/cohortes/nueva">
-        <div class="field"><label>Curso</label>
-          <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
-        <div class="field"><label>Modalidad</label>
-          <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select></div>
-        <div class="field"><label>Fecha de inicio</label><input type="date" name="fecha_inicio" required></div>
-        <div class="field"><label>Cupo</label><input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10"></div>
-        <button class="btn ghost block" type="submit">Agregar cohorte</button>
-      </form>
-    </div>`, { section: 'cohortes' }));
+    ${fabModal({
+      id: 'nuevaCohorte', label: 'Nueva cohorte', titulo: 'Nueva cohorte',
+      contenido: `
+        <form method="post" action="/admin/cohortes/nueva">
+          <div class="field"><label>Curso</label>
+            <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
+          <div class="field"><label>Modalidad</label>
+            <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select></div>
+          <div class="field"><label>Fecha de inicio</label><input type="date" name="fecha_inicio" required></div>
+          <div class="field"><label>Cupo</label><input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10"></div>
+          <button class="btn block" type="submit">Agregar cohorte</button>
+        </form>`,
+    })}`, { section: 'cohortes' }));
 });
 
 router.post('/cohortes', requireAuth, async (req, res) => {
@@ -566,25 +615,25 @@ router.get('/alumnos', requireAuth, async (req, res) => {
 
   res.send(layout('Alumnos', `
     <h1>Alumnos</h1>
-    <p class="sub">${rows.length} inscrito(s). Se crean automáticamente al confirmarse el pago 1 por Stripe, o manualmente aquí abajo para quien pagó por transferencia.</p>
     ${lista}
-    <h2>Dar de alta un alumno manualmente</h2>
-    <p class="sub">Para quien ya pagó el primer apartado por transferencia u otro medio fuera de Stripe. Entra igual al flujo automático de recordatorios de los pagos 2-5 — correo es obligatorio porque es el único canal que usan esos recordatorios.</p>
-    <div class="card">
-      ${aviso}
-      <form method="post" action="/admin/alumnos/nuevo">
-        <div class="field"><label>Curso y fecha de inicio</label>
-          <select name="cohorteId" required>
-            <option value="">Elige una cohorte…</option>
-            ${cohorteOpts}
-          </select></div>
-        <div class="field"><label>Nombre completo</label><input type="text" name="nombre" placeholder="Nombre completo" required></div>
-        <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
-        <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
-          <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
-        <button class="btn block" type="submit">Dar de alta</button>
-      </form>
-    </div>`, { section: 'alumnos' }));
+    ${fabModal({
+      id: 'altaAlumno', label: 'Dar de alta un alumno', titulo: 'Dar de alta un alumno',
+      autoOpen: !!req.query.error,
+      contenido: `
+        ${aviso}
+        <form method="post" action="/admin/alumnos/nuevo">
+          <div class="field"><label>Curso y fecha de inicio</label>
+            <select name="cohorteId" required>
+              <option value="">Elige una cohorte…</option>
+              ${cohorteOpts}
+            </select></div>
+          <div class="field"><label>Nombre completo</label><input type="text" name="nombre" placeholder="Nombre completo" required></div>
+          <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
+          <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
+            <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
+          <button class="btn block" type="submit">Dar de alta</button>
+        </form>`,
+    })}`, { section: 'alumnos' }));
 });
 
 router.post('/alumnos/nuevo', requireAuth, async (req, res) => {

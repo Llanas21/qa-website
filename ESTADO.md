@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 12 de agosto de 2026
+Última actualización: 15 de octubre de 2026
 
 ## Qué es
 
@@ -81,6 +81,56 @@ tiempo. Decisiones tomadas en esa conversación:
     rompió ninguna lógica.
   - Toda la lógica de negocio (queries, validaciones, redirects) quedó
     exactamente igual — este fue un cambio 100% de presentación.
+
+- [x] **Dos rondas de retroalimentación de diseño sobre el rediseño del
+  panel** (15 oct 2026), todas ya probadas con Puppeteer (emulación real
+  de iPhone) y funcionando:
+  - La barra inferior de 3 pestañas se reemplazó por un **menú lateral
+    (drawer) deslizable**, abierto con un botón de hamburguesa en la
+    barra superior. Se eligió así para poder agregar más pantallas
+    después sin pelear por ancho horizontal. **Sin botón de cerrar
+    dentro del menú** — se cierra únicamente tocando fuera de él (overlay),
+    por pedido explícito: un botón "X" se sentía redundante.
+  - Bug real encontrado y corregido: el enlace "Errores" del menú se veía
+    corrido hacia la derecha respecto a los demás. Causa: el selector CSS
+    `.drawer-link:last-child` se evalúa por cada padre por separado, así
+    que además de aplicarle el margen a "Salir" (la intención original)
+    también se lo aplicaba a "Errores" (último hijo de su propio
+    contenedor hermano). Se corrigió dándole a "Salir" su propia clase
+    (`drawer-logout`) en vez de depender de `:last-child`.
+  - Login: centrado vertical real con flex + `100dvh` en vez de un
+    `margin-top` fijo en vh (se veía descentrado en pantallas altas).
+  - Input de fecha (`/admin/cohortes`) reportado por el usuario con ancho
+    distinto a "Cupo máximo" y texto centrado — no reproducible en Chrome
+    (datos de prueba y capturas confirmaron que ahí ya rendía bien), muy
+    probablemente un comportamiento nativo de Safari/iOS. Se corrigió a
+    ciegas con las soluciones documentadas para ese bug específico:
+    `text-align:left` en el input más
+    `input[type=date]::-webkit-date-and-time-value{text-align:left}`
+    (Safari renderiza el valor de fecha con un pseudo-elemento interno
+    que ignora el `text-align` normal del input), además de `min-width:0`
+    global y `max-width:100%` en los inputs tipo texto. **Pendiente de
+    confirmar en un dispositivo real** — no se puede verificar el síntoma
+    original en este entorno (solo Chrome).
+  - **Principio de diseño establecido para todo el panel**: la app no
+    tiene que ser autodescriptiva — quien la usa recibe capacitación
+    sobre sus funciones, así que no hace falta texto explicativo de "cómo
+    funciona esto". Se recortaron párrafos tipo tutorial en Alumnos,
+    Cohortes y Errores (ej. "Se crean automáticamente al confirmarse el
+    pago 1 por Stripe, o manualmente aquí abajo...", "Texto libre — solo
+    funciona dentro de las 24h..."). Tenerlo en cuenta al agregar
+    pantallas nuevas: evitar `.sub` explicativos salvo que sea un dato
+    (conteo, fecha, origen), no una instrucción de uso.
+  - **"Dar de alta un alumno" (en Alumnos) y "Nueva cohorte" (en
+    Cohortes)** dejaron de ser formularios siempre visibles en una
+    tarjeta — ahora son un **botón flotante (FAB)** en la esquina inferior
+    derecha que abre una **hoja/modal** deslizable desde abajo con el
+    mismo formulario de siempre (misma validación, mismos endpoints de
+    POST, sin cambios de lógica). Patrón reutilizable: la función
+    `fabModal()` en `admin.js` genera el botón + overlay + hoja + el
+    script de abrir/cerrar; se usa pasándole un `id`, `label`, `titulo` y
+    el HTML del formulario. Pensado para reusarse en futuras pantallas
+    que necesiten un "agregar algo" sin ocupar espacio fijo.
 
 - [x] **Alta manual de alumnos desde el panel** (15 oct 2026) — para
   quien paga por transferencia u otro medio fuera de Stripe. Nuevo
