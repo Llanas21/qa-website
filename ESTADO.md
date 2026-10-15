@@ -19,6 +19,40 @@ link directo de WhatsApp, atendido a mano. El motor de captura y
 seguimiento sigue existiendo en el backend (histórico + por si se
 reactiva algún día), solo que el sitio ya no lo alimenta.
 
+**Pivote del panel admin en curso (15 oct 2026):** con el sitio público
+ya sin captura de leads (los prospectos ahora se manejan a mano en
+WhatsApp Business), el usuario decidió convertir `/admin` en una
+plataforma de administración más amplia para la academia — enfocada a
+mobile, pensada para usarse como **PWA instalable con notificaciones
+push** (avisos de pagos recibidos/vencidos/fallidos primero), y a la que
+se le irán agregando automatizaciones de procesos internos con el
+tiempo. Decisiones tomadas en esa conversación:
+- **"Prospectos" sale del todo del menú** del panel (no solo se
+  archiva) — los datos siguen en la tabla `prospectos`, solo ya no hay
+  una sección del panel dedicada a ellos.
+- Notificaciones push: arrancar con eventos de **pagos** (recibido,
+  vencido, fallido) — no con errores técnicos del sitio (segunda
+  prioridad, no la primera).
+- La PWA/push todavía **no está construida** — esto quedó como la
+  dirección a seguir, pero la primera función concreta que se pidió fue
+  el alta manual de alumnos (ver abajo). El trabajo de manifest.json +
+  service worker + Web Push (VAPID) + quitar "Prospectos" del nav
+  sigue pendiente.
+
+- [x] **Alta manual de alumnos desde el panel** (15 oct 2026) — para
+  quien paga por transferencia u otro medio fuera de Stripe. Nuevo
+  formulario en `/admin/alumnos` (selector de cohorte con cupo
+  disponible — una cohorte llena ni siquiera aparece ahí — + nombre +
+  correo obligatorio + WhatsApp opcional, asume `+52`). Reutiliza
+  `confirmarInscripcion()` (ahora acepta un `metodo` — `'stripe'` por
+  default, `'manual'` aquí) a través de la nueva `engine.altaAlumnoManual()`:
+  mismo resultado final que el flujo de Stripe — pago 1 queda
+  `pagado`/`manual`, se generan los 5 pagos, se ocupa el cupo, se manda
+  la confirmación por correo, y entra igual al cron de recordatorios de
+  los pagos 2-5. Probado en local: alta exitosa con plan de pagos
+  correcto y correo de confirmación enviado; cohorte llena
+  correctamente excluida del selector.
+
 ## Estructura del repositorio
 
 ```

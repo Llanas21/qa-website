@@ -322,7 +322,60 @@ router.get('/alumnos', requireAuth, async (req, res) => {
     <thead><tr><th>Alumno</th><th>Curso</th><th>Inicio</th><th>Pagos</th><th>Alta</th></tr></thead>
     <tbody>${filas}</tbody></table>` : '<div class="card empty">Aún no hay alumnos inscritos.</div>';
 
-  res.send(layout('Alumnos', `<h1>Alumnos</h1><p class="sub">${rows.length} inscrito(s). Se crean automáticamente al confirmarse el pago 1.</p>${tabla}`));
+  // Cohortes con cupo disponible, para el selector del alta manual — se
+  // muestran aunque no tengan fecha (igual que /admin/cohortes), pero esas
+  // no se pueden elegir sin fecha (el plan de pagos se calcula desde ahí).
+  const cohortesRows = (await query(
+    `SELECT id, curso, modalidad, fecha_inicio, cupo_maximo, lugares_ocupados FROM cohortes
+     WHERE fecha_inicio IS NOT NULL AND lugares_ocupados < cupo_maximo
+     ORDER BY curso, fecha_inicio`)).rows;
+  const cohorteOpts = cohortesRows.map(c =>
+    `<option value="${c.id}">${esc(c.curso)} · ${label(c.modalidad)} · ${new Date(c.fecha_inicio).toLocaleDateString('es-MX')} (${c.cupo_maximo - c.lugares_ocupados} lugar${c.cupo_maximo - c.lugares_ocupados === 1 ? '' : 'es'})</option>`
+  ).join('');
+
+  const aviso = req.query.error ? `<p class="pill" style="color:var(--bad)">✗ ${esc(req.query.error)}</p>` : '';
+
+  res.send(layout('Alumnos', `
+    <h1>Alumnos</h1>
+    <p class="sub">${rows.length} inscrito(s). Se crean automáticamente al confirmarse el pago 1 por Stripe, o manualmente aquí abajo para quien pagó por transferencia.</p>
+    ${tabla}
+    <h2>Dar de alta un alumno manualmente</h2>
+    <p class="sub">Para quien ya pagó el primer apartado por transferencia u otro medio fuera de Stripe. Entra igual al flujo automático de recordatorios de los pagos 2-5 — correo es obligatorio porque es el único canal que usan esos recordatorios.</p>
+    <div class="card">
+      ${aviso}
+      <form method="post" action="/admin/alumnos/nuevo" class="filters" style="flex-direction:column;align-items:stretch;gap:12px;max-width:420px">
+        <select name="cohorteId" required>
+          <option value="">Curso y fecha de inicio…</option>
+          ${cohorteOpts}
+        </select>
+        <input type="text" name="nombre" placeholder="Nombre completo" required>
+        <input type="tel" inputmode="numeric" name="whatsapp" placeholder="WhatsApp (10 dígitos, opcional — se asume +52)">
+        <input type="email" name="correo" placeholder="Correo (obligatorio)" required>
+        <button class="btn" type="submit" style="align-self:flex-start">Dar de alta</button>
+      </form>
+    </div>`));
+});
+
+router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const cohorteId = Number(b.cohorteId);
+  const nombre = (b.nombre || '').toString().trim();
+  const correo = (b.correo || '').toString().trim();
+  const numero = (b.whatsapp || '').toString().replace(/\D/g, '');
+
+  if (!Number.isInteger(cohorteId) || cohorteId <= 0 || nombre.length < 2 || !correo) {
+    return res.redirect(`/admin/alumnos?error=${encodeURIComponent('Elige la cohorte y llena nombre y correo.')}`);
+  }
+
+  const r = await engine.altaAlumnoManual({
+    cohorteId, nombre, correo,
+    whatsapp: numero ? { pais: '+52', numero } : null,
+  });
+  if (!r.ok) {
+    const msg = r.motivo === 'sin_cupo' ? 'Esa cohorte ya no tiene cupo disponible.' : 'No se pudo dar de alta (cohorte no encontrada).';
+    return res.redirect(`/admin/alumnos?error=${encodeURIComponent(msg)}`);
+  }
+  res.redirect(`/admin/alumno/${r.alumno.id}?creado=1`);
 });
 
 router.get('/alumno/:id', requireAuth, async (req, res) => {
@@ -348,10 +401,13 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       <div class="body">${esc(m.error ? '⚠ ' + m.error : m.contenido)}</div></li>`).join('')}</ul>`
     : '<p class="sub">Sin mensajes todavía.</p>';
 
+  const aviso = req.query.creado ? `<p class="pill" style="color:#8ff0c0">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
+
   res.send(layout(a.nombre, `
     <a class="backlink" href="/admin/alumnos">← Alumnos</a>
     <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
     <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${new Date(a.fecha_inicio).toLocaleDateString('es-MX')}</p>
+    ${aviso}
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>

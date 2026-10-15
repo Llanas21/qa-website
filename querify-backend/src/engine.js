@@ -285,7 +285,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
 // Confirma el pago 1: crea al alumno, genera los 5 pagos programados (el 1 ya
 // 'pagado') y ocupa el cupo de la cohorte. Idempotente por stripe_session_id,
 // para no duplicar el alta si Stripe reenvía el mismo webhook.
-async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId }) {
+async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, metodo = 'stripe' }) {
   if (stripeSessionId) {
     const existe = await query(
       `SELECT a.* FROM alumnos a JOIN pagos p ON p.alumno_id = a.id
@@ -314,7 +314,7 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
       `INSERT INTO pagos (alumno_id, numero_pago, monto, fecha_vencimiento, estado, metodo, stripe_session_id, stripe_payment_intent_id, fecha_pago)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [alumno.id, n, config.pagos.monto, venc.toISOString().slice(0, 10),
-        esPago1 ? 'pagado' : 'pendiente', esPago1 ? 'stripe' : null,
+        esPago1 ? 'pagado' : 'pendiente', esPago1 ? metodo : null,
         esPago1 ? stripeSessionId : null, esPago1 ? stripePaymentIntentId : null,
         esPago1 ? new Date() : null]);
   }
@@ -322,7 +322,7 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
   await query(`UPDATE cohortes SET lugares_ocupados = lugares_ocupados + 1 WHERE id = $1`, [cohorteId]);
   await registrarMensajeAlumno(alumno.id, {
     tipo: 'pago', canal: 'sistema', estado: 'nota',
-    contenido: `Inscripción confirmada. Pago 1/5 recibido, lugar apartado en la cohorte #${cohorteId}.`,
+    contenido: `Inscripción confirmada (método: ${metodo}). Pago 1/5 recibido, lugar apartado en la cohorte #${cohorteId}.`,
   });
 
   // Confirmación real al alumno (WhatsApp→correo, igual que el resto del
@@ -336,6 +336,21 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
   });
 
   return alumno;
+}
+
+// Alta manual de un alumno desde el panel admin — para quien pagó por
+// transferencia u otro medio fuera de Stripe. Mismo resultado final que el
+// flujo normal (iniciarInscripcion + webhook): el pago 1 queda 'pagado' con
+// método 'manual', se generan los 5 pagos, se ocupa el cupo y entra igual al
+// flujo automático de recordatorios de los pagos 2-5 — solo que sin pasar
+// por Stripe para el pago 1. Valida cupo igual que iniciarInscripcion, para
+// no dar de alta a alguien en una cohorte ya llena por accidente.
+async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo }) {
+  const cohorte = await cohortePorId(cohorteId);
+  if (!cohorte) return { ok: false, motivo: 'cohorte_no_existe' };
+  if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
+  const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, metodo: 'manual' });
+  return { ok: true, alumno };
 }
 
 // Confirma un pago 2-5 ya generado (webhook de Stripe o marcado manual desde el panel).
@@ -434,6 +449,6 @@ async function revisarPagosPorVencer() {
 
 module.exports = {
   altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
-  cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion,
+  cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
 };
