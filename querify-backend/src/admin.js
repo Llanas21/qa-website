@@ -31,6 +31,8 @@ const ICO = {
   errores: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
   atras: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+  menu: '<path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>',
+  cerrar: '<path d="M18 6 6 18"/><path d="M6 6l12 12"/>',
 };
 const svg = (nombre, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${ICO[nombre]}</svg>`;
 
@@ -41,25 +43,51 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   const bannerPausa = config.automatizacionPausada
     ? `<div class="warn">⏸ Automatización pausada — no se manda bienvenida, recordatorio/valor/cierre ni recordatorios de pago. La confirmación de inscripción al pagar sí sigue activa. Quita <code>AUTOMATIZACION_PAUSADA</code> en Railway para reanudar.</div>` : '';
 
-  // `chrome` apaga TODO (topbar + tabbar) — solo para /login. Cualquier otra
-  // página autenticada siempre trae las dos barras: el botón de "volver" del
-  // topbar (cuando `back` aplica) es un atajo corto, pero la tabbar de abajo
-  // siempre deja un camino de regreso a las 3 secciones principales, para no
-  // dejar a nadie "atrapado" en una página de detalle sin salida.
-  const topbar = chrome ? `<header class="topbar">
-      ${back ? `<a class="iconbtn" href="${back}" aria-label="Volver">${svg('atras', 20)}</a>`
-        : `<span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>`}
-      <a class="iconbtn" href="/admin/logout" aria-label="Salir" title="Salir">${svg('salir', 19)}</a>
-    </header>` : '';
-
+  // `chrome` apaga TODO (topbar + menú) — solo para /login. Cualquier otra
+  // página autenticada siempre trae el topbar: el botón de "volver" (cuando
+  // `back` aplica) es un atajo corto para una página de detalle, y el botón
+  // de hamburguesa de la derecha siempre abre el menú lateral con las
+  // secciones + salir — nunca se deja a nadie "atrapado" sin salida.
+  // Menú lateral en vez de barra inferior a propósito (15 oct 2026, pedido
+  // del usuario): dijo que así puede seguir agregando pantallas después sin
+  // pelearse por espacio horizontal, cosa que una tabbar de iconos sí limita.
   const tabs = [
     { id: 'alumnos', href: '/admin/alumnos', label: 'Alumnos', ico: 'alumnos' },
     { id: 'cohortes', href: '/admin/cohortes', label: 'Cohortes', ico: 'cohortes' },
     { id: 'errores', href: '/admin/errores', label: 'Errores', ico: 'errores' },
   ];
-  const tabbar = chrome ? `<nav class="tabbar">
-      ${tabs.map(t => `<a href="${t.href}" class="${section === t.id ? 'active' : ''}">${svg(t.ico, 21)}<span>${t.label}</span></a>`).join('')}
-    </nav>` : '';
+
+  const topbar = chrome ? `<header class="topbar">
+      ${back ? `<a class="iconbtn" href="${back}" aria-label="Volver">${svg('atras', 20)}</a>`
+        : `<span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>`}
+      <button class="iconbtn" id="menuBtn" aria-label="Abrir menú" aria-expanded="false" aria-controls="drawer" type="button">${svg('menu', 20)}</button>
+    </header>` : '';
+
+  const drawer = chrome ? `
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    <nav class="drawer" id="drawer" aria-hidden="true" aria-label="Menú principal">
+      <div class="drawer-head">
+        <span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>
+        <button class="iconbtn" id="drawerClose" aria-label="Cerrar menú" type="button">${svg('cerrar', 18)}</button>
+      </div>
+      <div class="drawer-links">
+        ${tabs.map(t => `<a href="${t.href}" class="drawer-link ${section === t.id ? 'active' : ''}">${svg(t.ico, 20)}<span>${t.label}</span></a>`).join('')}
+      </div>
+      <div class="drawer-sep"></div>
+      <a href="/admin/logout" class="drawer-link">${svg('salir', 20)}<span>Salir</span></a>
+    </nav>
+    <script>
+      (function(){
+        var btn=document.getElementById('menuBtn'), overlay=document.getElementById('drawerOverlay'),
+            panel=document.getElementById('drawer'), close=document.getElementById('drawerClose');
+        if(!btn||!panel) return;
+        function abrir(){panel.classList.add('open');overlay.classList.add('open');btn.setAttribute('aria-expanded','true');panel.setAttribute('aria-hidden','false')}
+        function cerrar(){panel.classList.remove('open');overlay.classList.remove('open');btn.setAttribute('aria-expanded','false');panel.setAttribute('aria-hidden','true')}
+        btn.addEventListener('click', abrir);
+        overlay.addEventListener('click', cerrar);
+        close.addEventListener('click', cerrar);
+      })();
+    </script>` : '';
 
   return `<!DOCTYPE html><html lang="es-MX"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -86,12 +114,12 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
     --font:'Poppins',system-ui,-apple-system,sans-serif;
     --r-sm:9px;--r-md:13px;--r-lg:18px;
     --shadow-sm:0 1px 2px rgba(18,35,61,.05);--shadow-md:0 8px 20px rgba(18,35,61,.08);
-    --tabbar-h:62px;
+    --drawer-w:280px;
   }
-  *,*::before,*::after{box-sizing:border-box}
+  *,*::before,*::after{box-sizing:border-box;min-width:0}
   html{-webkit-text-size-adjust:100%}
   body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;-webkit-font-smoothing:antialiased;
-    overflow-wrap:anywhere;padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom,0px))}
+    overflow-wrap:anywhere;overflow-x:hidden}
   a{color:var(--accent-ink);text-decoration:none}
   a:hover{text-decoration:underline}
   img{max-width:100%}
@@ -103,19 +131,30 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .topbar .brand img{width:26px;height:26px;display:block}
   .topbar .brand b{font-weight:700}
   .iconbtn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;
-    color:var(--muted);border:1.5px solid var(--line-2);flex:0 0 auto}
+    color:var(--muted);border:1.5px solid var(--line-2);flex:0 0 auto;background:none;cursor:pointer;padding:0;font-family:inherit}
   .iconbtn:hover{background:var(--surface-2);text-decoration:none;color:var(--text)}
   .iconbtn svg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;
-    background:var(--surface);border-top:1px solid var(--line);
-    padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
-  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;
-    color:var(--muted-2);font-size:11px;font-weight:600;border-radius:12px}
-  .tabbar a svg{stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-  .tabbar a:hover{text-decoration:none;background:var(--surface-2)}
-  .tabbar a.active{color:var(--accent-strong)}
-  .tabbar a.active svg{stroke-width:2.2}
+  /* Menú lateral (hamburguesa) — reemplaza la barra inferior de pestañas:
+     deja espacio para ir agregando más pantallas sin pelear por ancho. */
+  .drawer-overlay{position:fixed;inset:0;background:rgba(15,30,51,.35);opacity:0;visibility:hidden;
+    transition:opacity .2s ease;z-index:20}
+  .drawer-overlay.open{opacity:1;visibility:visible}
+  .drawer{position:fixed;top:0;bottom:0;left:0;width:min(var(--drawer-w),82vw);background:var(--surface);
+    z-index:21;transform:translateX(-100%);transition:transform .22s ease;display:flex;flex-direction:column;
+    box-shadow:var(--shadow-md);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .drawer.open{transform:translateX(0)}
+  .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 14px 14px 18px;border-bottom:1px solid var(--line)}
+  .drawer-head .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink);font-size:15px}
+  .drawer-head .brand img{width:24px;height:24px}
+  .drawer-links{display:flex;flex-direction:column;padding:10px}
+  .drawer-link{display:flex;align-items:center;gap:13px;padding:12px 12px;border-radius:var(--r-sm);
+    color:var(--muted);font-size:14.5px;font-weight:600}
+  .drawer-link svg{stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .drawer-link:hover{background:var(--surface-2);text-decoration:none}
+  .drawer-link.active{color:var(--accent-strong);background:var(--accent-soft)}
+  .drawer-sep{height:1px;background:var(--line);margin:4px 14px}
+  .drawer .drawer-link:last-child{margin:6px 10px 14px}
 
   .wrap{max-width:720px;margin:0 auto;padding:18px 16px 24px}
   h1{font-size:21px;margin:0 0 4px;color:var(--ink);letter-spacing:-.01em;font-weight:700}
@@ -125,7 +164,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .warn{background:var(--warn-soft);color:var(--warn-ink);border:1px solid var(--warn-line);padding:10px 14px;border-radius:var(--r-sm);margin:0 0 14px;font-size:12.5px;line-height:1.5}
   code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:.9em}
 
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow-sm)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow-sm);overflow:hidden}
   .empty{color:var(--muted);padding:34px 20px;text-align:center;font-size:13.5px;background:var(--surface);border:1px dashed var(--line-2);border-radius:var(--r-lg)}
 
   /* Listas de tarjetas (en vez de tablas) — pensadas para dedo, no para mouse */
@@ -154,7 +193,11 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 6px}
   select,input[type=date],input[type=text],input[type=password],input[type=email],input[type=tel],textarea{
     background:var(--surface);color:var(--text);border:1.5px solid var(--line-2);border-radius:var(--r-sm);
-    padding:11px 13px;font-size:14.5px;font-family:inherit;width:100%}
+    padding:11px 13px;font-size:14.5px;font-family:inherit;width:100%;max-width:100%;box-sizing:border-box}
+  /* input[type=date] en Safari/iOS puede insistir en un ancho mínimo propio y
+     salirse de su contenedor pase lo que diga width:100% — esto fuerza que al
+     menos no se salga visualmente de la tarjeta blanca (ver ESTADO.md, 15 oct 2026). */
+  input[type=date]{min-width:0}
   select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent)}
   textarea{resize:vertical}
 
@@ -186,7 +229,11 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .st.nota{color:var(--muted);background:var(--surface-2)}
   .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 
-  .login-wrap{max-width:360px;margin:14vh auto 0;padding:0 20px}
+  /* Centrado real con flex + dvh (en vez de un margin-top en vh fijo) para que
+     quede bien en cualquier alto de pantalla, no solo en el que se probó. */
+  body:has(.login-wrap){display:flex;min-height:100dvh}
+  body:has(.login-wrap) .wrap{display:flex;align-items:center;width:100%;padding-top:24px;padding-bottom:24px}
+  .login-wrap{max-width:360px;width:100%;margin:0 auto;padding:0 20px}
   .login-wrap .logo{display:block;margin:0 auto 16px;width:50px;height:50px}
   .login-wrap h1{text-align:center}
   .login-wrap .sub{text-align:center}
@@ -214,7 +261,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .pago-info .monto{font-weight:600;color:var(--ink);font-size:14px}
   .pago-info .venc{color:var(--muted);font-size:12.5px;margin-top:1px}
   .pago-right{flex:0 0 auto;text-align:right}
-</style></head><body>${topbar}<div class="wrap">${banner}${bannerPausa}${body}</div>${tabbar}</body></html>`;
+</style></head><body>${topbar}<div class="wrap">${banner}${bannerPausa}${body}</div>${drawer}</body></html>`;
 }
 
 // Manifest de la PWA — instalable desde el celular ("Agregar a pantalla de
