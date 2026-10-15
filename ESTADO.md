@@ -99,6 +99,26 @@ tiempo. Decisiones tomadas en esa conversación:
   alumnos por grupo usaba `COUNT(a.*)` después de un `LEFT JOIN pagos`,
   lo que multiplicaba cada alumno por su número de pagos (un alumno con 5
   pagos se contaba como "5 alumnos") — se corrigió a `COUNT(DISTINCT a.id)`.
+  Esa pantalla se renombró de "Alumnos" a **"Grupos"** en el menú y el
+  título (la ruta interna sigue siendo `/admin/alumnos`, solo cambió el
+  texto visible).
+
+- [x] **Nueva pantalla "Pagos" — ledger global (15 oct 2026)**:
+  `/admin/pagos`, cuarta sección del menú lateral. A diferencia del plan
+  de pagos de `/admin/alumno/:id` (acotado a un alumno), esta junta los
+  pagos de **todos** los alumnos en un solo lugar — pendientes, vencidos
+  y pagados (de Stripe o manuales) — con un filtro por estado. Cada fila
+  enlaza al detalle del alumno correspondiente. El FAB (mismo patrón
+  FAB + modal ya establecido) deja **registrar un pago manual** (el caso
+  de alguien que paga el pago 2-5 por transferencia): un solo select con
+  todos los pagos pendientes/vencidos de la academia (alumno + curso +
+  número de pago + monto + vencimiento en una sola línea, para evitar un
+  selector encadenado alumno→pago que habría necesitado JS extra) y un
+  botón para marcarlo pagado — reutiliza `engine.confirmarPago()`, el
+  mismo código que ya usaba el botón "Marcar pagado" dentro del alumno.
+  El FAB se oculta solo si no queda ningún pago pendiente en toda la
+  academia (no debería pasar en la práctica, pero evita un botón sin
+  nada que hacer).
 
 - [x] **Dos rondas de retroalimentación de diseño sobre el rediseño del
   panel** (15 oct 2026), todas ya probadas con Puppeteer (emulación real

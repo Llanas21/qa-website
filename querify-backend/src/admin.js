@@ -29,6 +29,7 @@ const ICO = {
   alumnos: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   cohortes: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
   errores: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  pagos: '<rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/>',
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
   atras: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
   menu: '<path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>',
@@ -80,7 +81,8 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   // del usuario): dijo que así puede seguir agregando pantallas después sin
   // pelearse por espacio horizontal, cosa que una tabbar de iconos sí limita.
   const tabs = [
-    { id: 'alumnos', href: '/admin/alumnos', label: 'Alumnos', ico: 'alumnos' },
+    { id: 'alumnos', href: '/admin/alumnos', label: 'Grupos', ico: 'alumnos' },
+    { id: 'pagos', href: '/admin/pagos', label: 'Pagos', ico: 'pagos' },
     { id: 'cohortes', href: '/admin/cohortes', label: 'Cohortes', ico: 'cohortes' },
     { id: 'errores', href: '/admin/errores', label: 'Errores', ico: 'errores' },
   ];
@@ -604,7 +606,7 @@ router.get('/alumnos', requireAuth, async (req, res) => {
       </div>
     </a>`).join('')}</div>` : '<div class="empty">Aún no hay alumnos inscritos.</div>';
 
-  res.send(layout('Alumnos', `<h1>Alumnos</h1>${lista}`, { section: 'alumnos' }));
+  res.send(layout('Grupos', `<h1>Grupos</h1>${lista}`, { section: 'alumnos' }));
 });
 
 router.get('/grupo/:id', requireAuth, async (req, res) => {
@@ -743,6 +745,94 @@ router.post('/alumno/:id/desarchivar', requireAuth, async (req, res) => {
   await query(`UPDATE alumnos SET archivado = false WHERE id = $1`, [req.params.id]);
   await engine.registrarMensajeAlumno(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Reactivado desde el panel — vuelve a recibir recordatorios de pago automáticos.' });
   res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+/* ------------------------------ pagos (ledger global) ------------------------------
+   A diferencia del plan de pagos dentro de /admin/alumno/:id (acotado a un
+   alumno), esta pantalla junta los pagos de TODOS los alumnos — pendientes,
+   vencidos y ya pagados (de Stripe o manuales) — en un solo lugar, con un
+   acceso rápido para registrar un pago manual (transferencia) sin tener
+   que entrar primero al alumno correspondiente. */
+router.get('/pagos', requireAuth, async (req, res) => {
+  const { estado = '' } = req.query;
+  const cond = [], params = [];
+  if (estado) { params.push(estado); cond.push(`p.estado = $${params.length}`); }
+  const where = cond.length ? `WHERE ${cond.join(' AND ')}` : '';
+
+  const { rows } = await query(`
+    SELECT p.*, a.nombre AS alumno_nombre, c.curso, c.modalidad
+    FROM pagos p
+    JOIN alumnos a ON a.id = p.alumno_id
+    JOIN cohortes c ON c.id = a.cohorte_id
+    ${where}
+    ORDER BY
+      CASE p.estado WHEN 'vencido' THEN 0 WHEN 'pendiente' THEN 1 ELSE 2 END,
+      (CASE WHEN p.estado = 'pagado' THEN p.fecha_pago END) DESC NULLS LAST,
+      p.fecha_vencimiento ASC`, params);
+
+  const opt = (v, cur, lbl) => `<option value="${v}"${cur === v ? ' selected' : ''}>${lbl}</option>`;
+  const filtros = `<form class="filters" method="get">
+      <select name="estado">${opt('', estado, 'Todos los estados')}${opt('vencido', estado, 'Vencidos')}${opt('pendiente', estado, 'Pendientes')}${opt('pagado', estado, 'Pagados')}</select>
+      <button class="btn ghost" type="submit">Filtrar</button>
+      ${estado ? '<a class="btn ghost" href="/admin/pagos">Limpiar</a>' : ''}
+    </form>`;
+
+  const lista = rows.length ? `<div class="list">${rows.map(p => `
+    <a class="list-item" href="/admin/alumno/${p.alumno_id}">
+      <div class="li-top">
+        <div><div class="li-title">${esc(p.alumno_nombre)} <span class="pill" style="margin:0">· pago ${p.numero_pago}/5</span></div>
+          <div class="li-meta">${esc(p.curso)} · ${label(p.modalidad)} · ${p.estado === 'pagado'
+            ? `pagado ${fmt(p.fecha_pago)}${p.metodo ? ` (${p.metodo})` : ''}`
+            : `vence ${fmtDia(p.fecha_vencimiento)}`}</div>
+        </div>
+        <div class="li-right">
+          <div style="font-weight:600;color:var(--ink)">$${Number(p.monto)} MXN</div>
+          <span class="tag ${p.estado === 'pagado' ? 'ok' : p.estado === 'vencido' ? 'bad' : ''}" style="margin-top:4px;display:inline-block">${p.estado}</span>
+        </div>
+      </div>
+    </a>`).join('')}</div>` : '<div class="empty">No hay pagos que mostrar.</div>';
+
+  const pendientesRows = (await query(`
+    SELECT p.id, p.numero_pago, p.monto, p.fecha_vencimiento, a.nombre AS alumno_nombre, c.curso, c.modalidad
+    FROM pagos p JOIN alumnos a ON a.id = p.alumno_id JOIN cohortes c ON c.id = a.cohorte_id
+    WHERE p.estado IN ('pendiente','vencido')
+    ORDER BY p.fecha_vencimiento ASC`)).rows;
+  const pagoOpts = pendientesRows.map(p =>
+    `<option value="${p.id}">${esc(p.alumno_nombre)} — ${esc(p.curso)} ${label(p.modalidad)} — pago ${p.numero_pago}/5 — $${Number(p.monto)} MXN — vence ${fmtDia(p.fecha_vencimiento)}</option>`
+  ).join('');
+
+  const aviso = req.query.error ? `<p class="pill bad">✗ ${esc(req.query.error)}</p>` : '';
+
+  res.send(layout('Pagos', `
+    <h1>Pagos</h1>
+    ${filtros}
+    ${lista}
+    ${pendientesRows.length ? fabModal({
+      id: 'registrarPago', label: 'Registrar pago manual', titulo: 'Registrar pago manual',
+      autoOpen: !!req.query.error,
+      contenido: `
+        ${aviso}
+        <form method="post" action="/admin/pagos/marcar-pagado">
+          <div class="field"><label>Pago</label>
+            <select name="pagoId" required>
+              <option value="">Elige un pago…</option>
+              ${pagoOpts}
+            </select></div>
+          <button class="btn block" type="submit">Marcar como pagado</button>
+        </form>`,
+    }) : ''}`, { section: 'pagos' }));
+});
+
+router.post('/pagos/marcar-pagado', requireAuth, async (req, res) => {
+  const pagoId = Number((req.body || {}).pagoId);
+  if (!Number.isInteger(pagoId) || pagoId <= 0) {
+    return res.redirect(`/admin/pagos?error=${encodeURIComponent('Elige un pago.')}`);
+  }
+  const pago = await engine.confirmarPago({ pagoId, metodo: 'manual' });
+  if (!pago) {
+    return res.redirect(`/admin/pagos?error=${encodeURIComponent('Ese pago ya no se pudo marcar (puede que ya estuviera pagado).')}`);
+  }
+  res.redirect('/admin/pagos?ok=1');
 });
 
 module.exports = { router, requireAuth };
