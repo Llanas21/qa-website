@@ -324,7 +324,7 @@ router.get('/manifest.webmanifest', (req, res) => {
   res.json({
     name: 'Querify Analytics — Admin',
     short_name: 'Querify Admin',
-    start_url: '/admin',
+    start_url: '/admin/alumnos',
     scope: '/admin',
     display: 'standalone',
     background_color: '#F6F9FD',
