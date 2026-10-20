@@ -66,7 +66,10 @@ tiempo. Decisiones tomadas en esa conversación:
     contenedor Debian (`node:20-bookworm-slim`) antes de subirlo, y salieron
     dos problemas que en Windows no se ven:
     1. Faltan las librerías `libnss3` y `libexpat1` → declaradas en
-       `railpack.json` (raíz del repo, `deploy.aptPackages`).
+       `railpack.json` (raíz del repo, `deploy.aptPackages`). Ojo: la lista
+       empieza con `"..."` — sin eso **reemplaza** los paquetes que Railpack
+       pone solo (ej. `libatomic1`) en vez de sumarse; el primer deploy lo
+       avisó en el log.
     2. El PDF salía **sin ningún texto**: fuera de AWS Lambda,
        `@sparticuz/chromium` no declara `FONTCONFIG_PATH`, y sin eso Chrome
        no carga ninguna fuente (ni siquiera las incrustadas). Se declara en
@@ -86,10 +89,14 @@ tiempo. Decisiones tomadas en esa conversación:
     `@sparticuz` solo corre en Linux); en Railway va vacío.
   - Probado end-to-end: botón → PDF → correo real; liga de descarga sirve
     `application/pdf` con nombre de archivo con acentos (RFC 5987).
-  - Las firmas y el logo llegaron como imágenes chicas (176–287 px de
-    ancho): se ven bien en pantalla, pero si se imprime el certificado,
-    versiones de más resolución se verían más nítidas — basta reemplazar
-    los PNG en `assets/certificado/` con el mismo nombre.
+  - **En producción (19 oct 2026)**: desplegado y verificado generando un
+    certificado dentro del contenedor (`railway ssh`) y revisándolo a ojo
+    — completo, igual que el local. Railway corre **Node 18.20.8** (lo toma
+    de `engines: >=18` en `package.json`) sobre Debian trixie; por eso
+    importa que las versiones fijadas de `puppeteer-core`/`@sparticuz/
+    chromium` acepten Node 18. Firmas y logo en triple de resolución
+    (mismas proporciones; la firma de José ahora llega al tope de 120px de
+    alto de la plantilla, igual que la de David).
 
 - [x] **Rediseño completo del panel admin, mobile-first (15 oct 2026)**
   — antes era un panel de prospectos con tema oscuro genérico, sin
