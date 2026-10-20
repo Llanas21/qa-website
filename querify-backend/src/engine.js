@@ -256,7 +256,7 @@ function baseUrl() {
 // confirmarInscripcion(), al confirmarse el pago.
 async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, urlExito, urlCancelado }) {
   const cohorte = await cohortePorId(cohorteId);
-  if (!cohorte) return { ok: false, motivo: 'cohorte_no_existe' };
+  if (!cohorte || !cohorte.fecha_inicio) return { ok: false, motivo: 'cohorte_no_existe' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
 
   const r = await providers.crearCheckoutSession({
@@ -349,6 +349,9 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
 async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo }) {
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte) return { ok: false, motivo: 'cohorte_no_existe' };
+  // El plan de pagos se calcula desde fecha_inicio; sin ella, new Date(null)
+  // da 1970 y los pagos 2-5 quedan vencidos de inmediato (pasó en producción).
+  if (!cohorte.fecha_inicio) return { ok: false, motivo: 'sin_fecha' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
   const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, metodo: 'manual' });
   return { ok: true, alumno };

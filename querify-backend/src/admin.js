@@ -643,12 +643,16 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
 
   const aviso = req.query.error ? `<p class="pill bad">✗ ${esc(req.query.error)}</p>` : '';
   const sinCupo = cohorte.lugares_ocupados >= cohorte.cupo_maximo;
+  // Sin fecha de inicio no hay de dónde calcular el plan de pagos: antes se
+  // podía dar de alta igual y los pagos quedaban con vencimiento en 1970.
+  const sinFecha = !cohorte.fecha_inicio;
 
   res.send(layout(`${cohorte.curso} · ${label(cohorte.modalidad)}`, `
     <h1>${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span></h1>
     <p class="sub">Inicia ${fmtDia(cohorte.fecha_inicio)} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
+    ${sinFecha ? '<p class="pill bad">Sin fecha de inicio: asígnala en Cohortes para dar de alta alumnos.</p>' : ''}
     ${lista}
-    ${sinCupo ? '' : fabModal({
+    ${sinCupo || sinFecha ? '' : fabModal({
       id: 'altaAlumno', label: 'Dar de alta un alumno', titulo: 'Dar de alta un alumno',
       autoOpen: !!req.query.error,
       contenido: `
@@ -681,7 +685,9 @@ router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
     whatsapp: numero ? { pais: '+52', numero } : null,
   });
   if (!r.ok) {
-    const msg = r.motivo === 'sin_cupo' ? 'Esa cohorte ya no tiene cupo disponible.' : 'No se pudo dar de alta (cohorte no encontrada).';
+    const msg = r.motivo === 'sin_cupo' ? 'Esa cohorte ya no tiene cupo disponible.'
+      : r.motivo === 'sin_fecha' ? 'Esa cohorte no tiene fecha de inicio.'
+      : 'No se pudo dar de alta (cohorte no encontrada).';
     return res.redirect(`${volver}?error=${encodeURIComponent(msg)}`);
   }
   res.redirect(`/admin/alumno/${r.alumno.id}?creado=1`);
