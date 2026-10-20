@@ -592,7 +592,7 @@ router.post('/cohortes/nueva', requireAuth, async (req, res) => {
 router.get('/alumnos', requireAuth, async (req, res) => {
   const { rows } = await query(`
     SELECT c.id, c.curso, c.modalidad, c.fecha_inicio,
-           COUNT(DISTINCT a.id) AS total,
+           COUNT(DISTINCT a.id) FILTER (WHERE a.fecha_baja IS NULL) AS total,
            COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos
     FROM cohortes c
     JOIN alumnos a ON a.cohorte_id = c.id
@@ -633,7 +633,7 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
   const lista = rows.length ? `<div class="list">${rows.map(a => `
     <a class="list-item" href="/admin/alumno/${a.id}">
       <div class="li-top">
-        <div class="li-title">${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
+        <div class="li-title">${esc(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
         <div class="li-right">
           <span class="tag ${a.vencidos > 0 ? 'bad' : a.pagados >= 5 ? 'ok' : ''}">${a.pagados} / 5 pagados</span>
           ${a.vencidos > 0 ? `<div style="margin-top:5px"><span class="tag bad">${a.vencidos} vencido(s)</span></div>` : ''}
@@ -663,6 +663,10 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
           <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
           <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
             <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
+          <label class="field" style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);cursor:pointer">
+            <input type="checkbox" name="bienvenida" checked style="width:18px;height:18px;accent-color:var(--accent-strong)">
+            Enviar correo de bienvenida
+          </label>
           <button class="btn block" type="submit">Dar de alta</button>
         </form>`,
     })}`, { back: '/admin/alumnos', section: 'alumnos' }));
@@ -683,6 +687,8 @@ router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
   const r = await engine.altaAlumnoManual({
     cohorteId, nombre, correo,
     whatsapp: numero ? { pais: '+52', numero } : null,
+    // Un checkbox desmarcado no se envía en el formulario.
+    enviarBienvenida: b.bienvenida === 'on',
   });
   if (!r.ok) {
     const msg = r.motivo === 'sin_cupo' ? 'Esa cohorte ya no tiene cupo disponible.'
@@ -710,6 +716,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       </div>
       <div class="pago-right">
         ${p.estado === 'pagado' ? `<span class="tag ok">pagado</span>`
+          : p.estado === 'cancelado' ? `<span class="tag">cancelado</span>`
           : p.estado === 'vencido' ? `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn danger sm" type="submit" style="padding:7px 13px;font-size:12.5px">Vencido · marcar pagado</button></form>`
           : `<form method="post" action="/admin/alumno/${a.id}/pago/${p.id}/marcar-pagado"><button class="btn ghost sm" type="submit" style="padding:7px 13px;font-size:12.5px">Marcar pagado</button></form>`}
       </div>
@@ -718,12 +725,13 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
   const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>`
     : req.query.cert_enviado ? `<p class="pill ok">✓ Certificado enviado por correo.</p>`
     : req.query.cert_error ? `<p class="pill bad">✗ ${esc(req.query.cert_error)}</p>`
+    : req.query.baja ? `<p class="pill ok">✓ Alumno dado de baja: su lugar quedó libre y sus pagos pendientes se cancelaron.</p>`
     : '';
-  const pendientes = pagos.filter(p => p.estado !== 'pagado').length;
+  const pendientes = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido').length;
 
   // Generar el PDF tarda unos segundos (abre un Chrome en el servidor): se
   // deshabilita el botón al enviar para que un doble toque no mande dos correos.
-  const certificado = `
+  const certificado = a.fecha_baja ? '' : `
     <h2>Certificado</h2>
     <div class="card">
       ${a.certificado_token ? `<p class="pill" style="margin:0 0 12px">Enviado el ${fmt(a.certificado_subido_en)}</p>` : ''}
@@ -736,18 +744,18 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     </div>`;
 
   res.send(layout(a.nombre, `
-    <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
-    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)}</p>
+    <h1>${esc(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
+    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)}${a.fecha_baja ? ` · baja el ${fmt(a.fecha_baja)}` : ''}</p>
     ${aviso}
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
     </div>
-      <div class="actions">
-        <form method="post" action="/admin/alumno/${a.id}/${a.archivado ? 'desarchivar' : 'archivar'}">
-          <button class="btn ${a.archivado ? 'ghost' : 'danger'}" type="submit">${a.archivado ? 'Reactivar' : 'Archivar'}</button>
+      ${a.fecha_baja ? '' : `<div class="actions">
+        <form method="post" action="/admin/alumno/${a.id}/baja" onsubmit="return confirm('¿Dar de baja a este alumno? Se libera su lugar y se cancelan sus pagos pendientes.')">
+          <button class="btn danger" type="submit">Dar de baja</button>
         </form>
-      </div></div>
+      </div>`}</div>
     <h2>Plan de pagos</h2>
     ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
       <button class="btn ghost" type="submit">Liquidar</button>
@@ -792,23 +800,17 @@ router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, r
 // o vencido del alumno como pagado, uno por uno, reutilizando la misma
 // confirmarPago() de siempre.
 router.post('/alumno/:id/liquidar', requireAuth, async (req, res) => {
-  const pendientes = (await query(`SELECT id FROM pagos WHERE alumno_id = $1 AND estado <> 'pagado'`, [req.params.id])).rows;
+  const pendientes = (await query(`SELECT id FROM pagos WHERE alumno_id = $1 AND estado IN ('pendiente', 'vencido')`, [req.params.id])).rows;
   for (const p of pendientes) {
     await engine.confirmarPago({ pagoId: p.id, metodo: 'manual' });
   }
   res.redirect(`/admin/alumno/${req.params.id}`);
 });
 
-router.post('/alumno/:id/archivar', requireAuth, async (req, res) => {
-  await query(`UPDATE alumnos SET archivado = true WHERE id = $1`, [req.params.id]);
-  await engine.registrarMensajeAlumno(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Archivado desde el panel — ya no recibe recordatorios de pago automáticos.' });
-  res.redirect(`/admin/alumno/${req.params.id}`);
-});
-
-router.post('/alumno/:id/desarchivar', requireAuth, async (req, res) => {
-  await query(`UPDATE alumnos SET archivado = false WHERE id = $1`, [req.params.id]);
-  await engine.registrarMensajeAlumno(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Reactivado desde el panel — vuelve a recibir recordatorios de pago automáticos.' });
-  res.redirect(`/admin/alumno/${req.params.id}`);
+// Reemplaza a "Archivar"/"Reactivar" (20 oct 2026): ver engine.darDeBaja.
+router.post('/alumno/:id/baja', requireAuth, async (req, res) => {
+  await engine.darDeBaja(req.params.id);
+  res.redirect(`/admin/alumno/${req.params.id}?baja=1`);
 });
 
 /* ------------------------------ pagos (ledger global) ------------------------------

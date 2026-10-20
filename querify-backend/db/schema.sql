@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS alumnos (
 );
 -- Migración en línea para bases creadas antes de que existiera `archivado`:
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT false;
+-- Baja (dejó el curso, ver engine.darDeBaja): reemplaza al botón "Archivar"
+-- desde el 20 oct 2026. `archivado` se conserva para los alumnos que ya lo
+-- tenían (lote histórico), pero ya no se activa desde el panel.
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMPTZ;
 -- Certificado de finalización: el PDF se guarda directo en la base (no hay
 -- almacenamiento de archivos persistente en el contenedor de Railway — se
 -- pierde en cada deploy) y se sirve público por un token aleatorio, no por
@@ -87,7 +91,7 @@ CREATE TABLE IF NOT EXISTS pagos (
   numero_pago                INT NOT NULL,                  -- 1..5
   monto                      NUMERIC(10,2) NOT NULL DEFAULT 500.00,
   fecha_vencimiento          DATE NOT NULL,
-  estado                     TEXT NOT NULL DEFAULT 'pendiente', -- 'pendiente'|'pagado'|'vencido'
+  estado                     TEXT NOT NULL DEFAULT 'pendiente', -- 'pendiente'|'pagado'|'vencido'|'cancelado' (baja)
   metodo                     TEXT,                          -- 'stripe'|'manual'
   stripe_session_id          TEXT,
   stripe_payment_intent_id   TEXT,

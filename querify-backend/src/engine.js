@@ -286,7 +286,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
 // Confirma el pago 1: crea al alumno, genera los 5 pagos programados (el 1 ya
 // 'pagado') y ocupa el cupo de la cohorte. Idempotente por stripe_session_id,
 // para no duplicar el alta si Stripe reenvía el mismo webhook.
-async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, metodo = 'stripe' }) {
+async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, metodo = 'stripe', enviarBienvenida = true }) {
   if (stripeSessionId) {
     const existe = await query(
       `SELECT a.* FROM alumnos a JOIN pagos p ON p.alumno_id = a.id
@@ -328,13 +328,16 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
 
   // Confirmación real al alumno (WhatsApp→correo, igual que el resto del
   // sistema) — antes solo quedaba la nota interna de arriba y nunca se le
-  // avisaba de verdad que su lugar quedó apartado.
-  const vars = [alumno.nombre, cohorte.curso];
-  await enviarConVars({
-    pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
-    canal: 'correo', tipo: 'inscripcion', vars,
-    onLog: (m) => registrarMensajeAlumno(alumno.id, m),
-  });
+  // avisaba de verdad que su lugar quedó apartado. El alta manual puede
+  // apagarlo (ej. registrar a alguien de un grupo que ya va a la mitad).
+  if (enviarBienvenida) {
+    const vars = [alumno.nombre, cohorte.curso];
+    await enviarConVars({
+      pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
+      canal: 'correo', tipo: 'inscripcion', vars,
+      onLog: (m) => registrarMensajeAlumno(alumno.id, m),
+    });
+  }
 
   return alumno;
 }
@@ -346,15 +349,34 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
 // flujo automático de recordatorios de los pagos 2-5 — solo que sin pasar
 // por Stripe para el pago 1. Valida cupo igual que iniciarInscripcion, para
 // no dar de alta a alguien en una cohorte ya llena por accidente.
-async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo }) {
+async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo, enviarBienvenida = true }) {
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte) return { ok: false, motivo: 'cohorte_no_existe' };
   // El plan de pagos se calcula desde fecha_inicio; sin ella, new Date(null)
   // da 1970 y los pagos 2-5 quedan vencidos de inmediato (pasó en producción).
   if (!cohorte.fecha_inicio) return { ok: false, motivo: 'sin_fecha' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
-  const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, metodo: 'manual' });
+  const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, metodo: 'manual', enviarBienvenida });
   return { ok: true, alumno };
+}
+
+// Baja de un alumno que dejó el curso: libera su lugar en el cupo, cancela
+// sus pagos pendientes/vencidos (ya no se cobran ni cuentan como adeudo) y
+// lo marca con fecha_baja. No se borra nada: su historial y los pagos que sí
+// hizo se conservan. El WHERE fecha_baja IS NULL evita liberar el cupo dos
+// veces si se envía dos veces.
+async function darDeBaja(alumnoId) {
+  const { rows } = await query(
+    `UPDATE alumnos SET fecha_baja = now() WHERE id = $1 AND fecha_baja IS NULL RETURNING cohorte_id`, [alumnoId]);
+  if (!rows[0]) return { ok: false };
+  const cancelados = (await query(
+    `UPDATE pagos SET estado = 'cancelado' WHERE alumno_id = $1 AND estado IN ('pendiente', 'vencido')`, [alumnoId])).rowCount;
+  await query(`UPDATE cohortes SET lugares_ocupados = GREATEST(lugares_ocupados - 1, 0) WHERE id = $1`, [rows[0].cohorte_id]);
+  await registrarMensajeAlumno(alumnoId, {
+    tipo: 'sistema', canal: 'sistema', estado: 'nota',
+    contenido: `Dado de baja desde el panel: ${cancelados} pago(s) pendiente(s) cancelado(s) y su lugar liberado.`,
+  });
+  return { ok: true };
 }
 
 // Sube (o reemplaza) el PDF del certificado de un alumno y genera un token
@@ -444,7 +466,12 @@ async function revisarPagosPorVencer() {
      JOIN alumnos  a ON a.id = p.alumno_id
      JOIN cohortes c ON c.id = a.cohorte_id
      WHERE p.estado IN ('pendiente', 'vencido') AND p.numero_pago > 1
-       AND NOT a.archivado
+       AND NOT a.archivado AND a.fecha_baja IS NULL
+       -- Pagos que ya estaban vencidos al darlo de alta (alta manual en un
+       -- grupo ya empezado) no se cobran solos: se registran a mano en el
+       -- panel. Sin esto, el alumno recibía cobros de pagos que muy
+       -- probablemente ya hizo, minutos después del alta.
+       AND p.fecha_vencimiento >= a.fecha_alta::date
        AND p.fecha_vencimiento <= (CURRENT_DATE + $1::int)
        AND (p.fecha_recordatorio_enviado IS NULL OR p.fecha_recordatorio_enviado < now() - interval '20 hours')
      ORDER BY p.fecha_vencimiento ASC`,
@@ -489,5 +516,5 @@ module.exports = {
   altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
-  subirCertificado, enviarCertificado,
+  subirCertificado, enviarCertificado, darDeBaja,
 };

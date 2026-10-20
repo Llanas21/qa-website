@@ -39,6 +39,39 @@ tiempo. Decisiones tomadas en esa conversación:
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
 
+- [x] **Incidente + baja de alumnos + correo de bienvenida opcional (20 oct
+  2026)**
+  - **Incidente**: una alumna real (Aleida Gonzalez) se dio de alta
+    manualmente en "SQL Server · Entre semana", cohorte **sin fecha de
+    inicio**. El plan de pagos se calculó desde `new Date(null)` (1970):
+    pagos 2-5 vencidos al instante, y el cron de la hora en punto le iba a
+    mandar 4 correos de cobro de golpe (además, ella ya había avisado que
+    dejaba el curso). Se archivó ~4 min antes del cron; confirmado que no
+    salió ningún cobro. Sí le llegó el correo de "tu lugar quedó apartado".
+    **Causa: regresión del 15 oct** — al mover el alta manual adentro de
+    cada grupo se perdió el filtro `fecha_inicio IS NOT NULL` del selector
+    original. Corregido: el botón de alta no aparece en grupos sin fecha, y
+    `altaAlumnoManual`/`iniciarInscripcion` rechazan cohortes sin fecha.
+  - **"Dar de baja"** reemplaza a "Archivar"/"Reactivar" (el usuario
+    confirmó que archivar ya sobraba): libera el lugar del cupo, cancela
+    los pagos pendientes (`estado = 'cancelado'`), quita el botón de
+    certificado y marca "baja" en el grupo. Sin "reactivar" — lleva
+    confirmación antes de ejecutarse. Los alumnos que ya estaban archivados
+    (lote histórico del 1 oct) se quedan así.
+  - **Checkbox "Enviar correo de bienvenida"** en el alta manual (activado
+    por defecto). El usuario descartó a propósito un campo de "pagos ya
+    cubiertos": los pagos ya hechos se registran a mano después del alta.
+    Para que eso no provoque cobros mientras tanto, el cron ya no manda
+    recordatorio de un pago cuyo vencimiento fue anterior a la fecha de
+    alta del alumno.
+  - **Para registrar los grupos en curso** (Excel entre semana desde el 28
+    sep, SQL entre semana desde el 29 sep): primero ponerles fecha de
+    inicio en Cohortes, luego dar de alta a cada alumno (sin bienvenida si
+    ya empezó) y marcar los pagos que ya hizo.
+  - El usuario pidió **borrar por completo** el registro de Aleida para
+    volverla a dar de alta bien; el borrado directo en producción quedó
+    pendiente de su permiso (ver la conversación).
+
 - [x] **Certificados para alumnos (19 oct 2026)** — botón **"Enviar
   certificado"** en `/admin/alumno/:id` (ese texto exacto lo pidió el
   usuario). En un solo paso: genera el PDF, lo guarda y manda el correo
