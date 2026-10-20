@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Certificado</title>
+<style>
+  /* Fuentes locales (carpeta fuentes/, de Google Fonts, licencia OFL) en vez
+     de cargarlas de fonts.googleapis.com: el PDF se genera en el servidor y
+     así no depende de la red. */
+  @font-face { font-family: "Gilda Display"; src: url("fuentes/GildaDisplay-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "DM Serif Display"; src: url("fuentes/DMSerifDisplay-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Lato"; font-weight: 400; src: url("fuentes/Lato-Regular.ttf") format("truetype"); }
+  @font-face { font-family: "Lato"; font-weight: 700; src: url("fuentes/Lato-Bold.ttf") format("truetype"); }
+  @font-face { font-family: "Poppins"; font-weight: 600; src: url("fuentes/Poppins-SemiBold.ttf") format("truetype"); }
+
+  /* Lienzo fijo de 1308x924 px (misma proporción que tu diseño, A4 horizontal) */
+  @page { size: 1308px 924px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #e9edf3; }
+
+  .cert {
+    position: relative;
+    width: 1308px;
+    height: 924px;
+    background: #fff;
+    overflow: hidden;
+    margin: 0 auto;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .cert > * { position: absolute; }
+  .fondo { inset: 0; width: 100%; height: 100%; }
+
+  .centrado { left: 0; right: 0; text-align: center; }
+
+  .titulo {
+    top: 128px;
+    font-family: "Gilda Display", serif;
+    font-size: 112px;
+    line-height: 1.1;
+    letter-spacing: 1px;
+  }
+  .subtitulo {
+    top: 257px;
+    font-family: "Lato", sans-serif;
+    font-size: 30px;
+    letter-spacing: 4px;
+  }
+  .otorga {
+    top: 348px;
+    font-family: "Lato", sans-serif;
+    font-size: 22px;
+    letter-spacing: 3.5px;
+  }
+  .alumno {
+    top: 395px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 120px;
+    font-family: "DM Serif Display", serif;
+    font-size: 86px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .parrafo {
+    top: 574px;
+    left: 50%;
+    width: 860px;
+    transform: translateX(-50%);
+    text-align: center;
+    font-family: "Lato", sans-serif;
+    font-size: 21px;
+    line-height: 34px;
+    letter-spacing: 2.2px;
+  }
+
+  /* Firmas */
+  .firma { width: 230px; text-align: center; top: 640px; height: 200px; }
+  .firma img {
+    position: absolute; left: 50%; bottom: 76px;
+    transform: translateX(-50%);
+    max-width: 230px; max-height: 120px;
+  }
+  .firma .linea { position: absolute; left: 14px; right: 14px; bottom: 66px; border-top: 2px solid #000; }
+  .firma .nombre {
+    position: absolute; left: 0; right: 0; bottom: 34px;
+    font-family: "Poppins", sans-serif; font-weight: 600;
+    font-size: 21px; letter-spacing: 1.5px;
+  }
+  .firma .cargo {
+    position: absolute; left: -30px; right: -30px; bottom: 6px;
+    font-family: "Lato", sans-serif; font-size: 18px; letter-spacing: 2px;
+  }
+  .firma.izq { left: 123px; }
+  .firma.der { left: 940px; }
+
+  .logo { left: 490px; top: 722px; width: 340px; height: 110px; object-fit: contain; }
+
+  /* Vista previa en pantalla: escala para que quepa en la ventana */
+  @media screen {
+    body { display: flex; justify-content: center; padding: 20px; }
+    .cert { box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+  }
+</style>
+</head>
+<body>
+<div class="cert">
+
+  <!-- Fondo: olas y líneas decorativas -->
+  <svg class="fondo" viewBox="0 0 1308 924" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="gTL" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#1c4aa6"/><stop offset="1" stop-color="#a9c3ec"/>
+      </linearGradient>
+      <linearGradient id="gTL2" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#7f9fd6"/><stop offset="1" stop-color="#b9cdee"/>
+      </linearGradient>
+      <linearGradient id="gBR" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#4a8df0"/><stop offset=".5" stop-color="#a9c3ec"/><stop offset="1" stop-color="#1c4aa6"/>
+      </linearGradient>
+      <linearGradient id="gBR2" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="#2b5db8"/><stop offset="1" stop-color="#8fb1e6"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Ola superior izquierda -->
+    <path d="M0 0 H745 C700 30 640 40 560 40 C440 40 330 60 240 110 C160 150 90 160 0 155 Z" fill="url(#gTL)"/>
+    <path d="M0 0 H690 C640 20 560 20 480 30 C390 45 300 50 230 80 C150 115 90 150 0 155 Z" fill="#3f78d8" opacity=".35"/>
+    <path d="M0 100 C70 100 130 80 175 35 C195 15 215 0 235 0 L120 0 C90 40 50 70 0 80 Z" fill="#2a56ad" opacity=".5"/>
+    <path d="M0 150 C60 160 110 150 150 120 C100 170 40 200 0 210 Z" fill="url(#gTL2)"/>
+
+    <!-- Ola inferior derecha -->
+    <path d="M1308 710 C1250 740 1200 800 1140 840 C1080 880 1000 880 930 880 C820 880 740 900 640 924 H1308 Z" fill="url(#gBR)"/>
+    <path d="M1308 770 C1240 800 1160 850 1090 880 C1000 915 880 905 760 924 H1308 Z" fill="#1f4fae" opacity=".55"/>
+    <!-- Ola inferior central -->
+    <path d="M560 924 C620 890 700 860 800 860 C900 860 980 880 1060 905 L1100 924 Z" fill="#4a8df0" opacity=".9"/>
+    <path d="M640 924 C700 905 760 895 830 895 C900 895 960 910 1010 924 Z" fill="#9fc0f5"/>
+
+    <!-- Líneas finas: esquina superior derecha -->
+    <g stroke="#8db5f5" stroke-width="2" fill="none">
+      <path d="M898 51 H1254 V405"/>
+      <path d="M935 64 H1240 V370"/>
+      <path d="M1035 40 L1141 89"/>
+      <path d="M1216 165 L1265 270"/>
+      <path d="M1215 165 H1267"/>
+    </g>
+    <!-- Líneas finas: esquina inferior izquierda -->
+    <g stroke="#8db5f5" stroke-width="2" fill="none">
+      <path d="M54 517 V872 H410"/>
+      <path d="M67 553 V859 H330"/>
+      <path d="M44 653 L92 758"/>
+      <path d="M41 758 H92"/>
+      <path d="M167 835 L272 883"/>
+      <path d="M167 835 V885"/>
+    </g>
+  </svg>
+
+  <div class="centrado titulo">CERTIFICADO</div>
+  <div class="centrado subtitulo">DE ACREDITACIÓN</div>
+  <div class="centrado otorga">SE OTORGA EL PRESENTE A:</div>
+
+  <!-- Marcador 1 -->
+  <div class="centrado alumno" id="alumno">{{NOMBRE_ALUMNO}}</div>
+
+  <!-- Marcador 2 -->
+  <p class="parrafo">
+    Como constancia de la acreditación del curso <span id="curso">{{NOMBRE_CURSO}}</span> en
+    Querify Analytics Academy dentro de la duración y bajo los criterios
+    establecidos por el programa.
+  </p>
+
+  <div class="firma izq">
+    <img src="firma_david.png" alt="">
+    <div class="linea"></div>
+    <div class="nombre">David Amezquita</div>
+    <div class="cargo">Director Administrativo</div>
+  </div>
+
+  <img class="logo" src="logo.png" alt="Querify Analytics Academy">
+
+  <div class="firma der">
+    <img src="firma_jose.png" alt="">
+    <div class="linea"></div>
+    <div class="nombre">José Llanas</div>
+    <div class="cargo">Director Académico</div>
+  </div>
+</div>
+
+<script>
+  // Reduce el tamaño del nombre si es muy largo para que siempre quepa.
+  // Se mide el ancho real del texto contra el espacio DENTRO del padding de
+  // 120px: el texto va centrado, así que al desbordarse invade el padding de
+  // ambos lados sin que scrollWidth lo detecte.
+  function ajustarNombre() {
+    const el = document.getElementById('alumno');
+    const cs = getComputedStyle(el);
+    const disponible = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const texto = document.createRange();
+    texto.selectNodeContents(el);
+    let size = 86;
+    el.style.fontSize = size + 'px';
+    while (texto.getBoundingClientRect().width > disponible && size > 36) {
+      size -= 2;
+      el.style.fontSize = size + 'px';
+    }
+  }
+  document.fonts.ready.then(ajustarNombre);
+</script>
+</body>
+</html>

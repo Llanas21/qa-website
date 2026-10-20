@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 15 de octubre de 2026
+Última actualización: 19 de octubre de 2026
 
 ## Qué es
 
@@ -38,6 +38,58 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Certificados para alumnos (19 oct 2026)** — botón **"Enviar
+  certificado"** en `/admin/alumno/:id` (ese texto exacto lo pidió el
+  usuario). En un solo paso: genera el PDF, lo guarda y manda el correo
+  con botón de descarga.
+  - **La plantilla es un HTML** (`querify-backend/assets/certificado/
+    plantilla.html`, diseñado por el usuario) con dos marcadores,
+    `{{NOMBRE_ALUMNO}}` y `{{NOMBRE_CURSO}}`. Para cambiar el diseño se
+    edita ese archivo; se puede abrir directo en el navegador para ver
+    cómo queda (las firmas, el logo y las fuentes están junto a él con
+    rutas relativas). `src/certificados.js` reemplaza los marcadores
+    (escapando el HTML), incrusta imágenes y fuentes como data URI y lo
+    imprime a PDF con un Chrome sin interfaz (`puppeteer-core`).
+  - **Historial**: antes de esto (16 oct) se intentaron tres versiones —
+    subir un PDF por alumno, una plantilla configurable con clics, y
+    tapar los placeholders de un PDF exportado de Canva con `pdf-lib` —
+    y el usuario las descartó todas; se deshicieron con `git reset` (nunca
+    salieron de local). De la primera se rescataron sin cambios las
+    piezas que sí servían: columnas `alumnos.certificado_*`,
+    `engine.subirCertificado/enviarCertificado`, la plantilla de correo
+    `certificado` y `GET /certificados/:token`.
+  - **Chrome en Railway**: `@sparticuz/chromium` (Chrome empaquetado para
+    servidores Linux) + `puppeteer-core`, **fijados a versión exacta**
+    (131.0.1 / 23.10.4 — tienen que coincidir entre sí, y son las últimas
+    que aceptan Node 20; las más nuevas piden Node 22+). Probado en un
+    contenedor Debian (`node:20-bookworm-slim`) antes de subirlo, y salieron
+    dos problemas que en Windows no se ven:
+    1. Faltan las librerías `libnss3` y `libexpat1` → declaradas en
+       `railpack.json` (raíz del repo, `deploy.aptPackages`).
+    2. El PDF salía **sin ningún texto**: fuera de AWS Lambda,
+       `@sparticuz/chromium` no declara `FONTCONFIG_PATH`, y sin eso Chrome
+       no carga ninguna fuente (ni siquiera las incrustadas). Se declara en
+       `certificados.js`. Además, `generarCertificado` falla con error si
+       alguna fuente no carga, para que nunca se mande un certificado sin
+       texto o con otra letra.
+  - **Fuentes locales** (`assets/certificado/fuentes/`, de Google Fonts,
+    licencia OFL) en vez de `fonts.googleapis.com`: el PDF no depende de
+    la red.
+  - **Bug de la plantilla original corregido**: `ajustarNombre()` comparaba
+    `scrollWidth` contra `clientWidth`, que incluye los 120px de padding de
+    cada lado. Como el nombre va centrado, se desbordaba sobre ese padding
+    sin que la comparación lo detectara, y los nombres largos llegaban
+    hasta el borde. Ahora mide el ancho real del texto contra el espacio
+    dentro del padding.
+  - En local, `CHROME_PATH` en `.env` apunta al Chrome instalado (el de
+    `@sparticuz` solo corre en Linux); en Railway va vacío.
+  - Probado end-to-end: botón → PDF → correo real; liga de descarga sirve
+    `application/pdf` con nombre de archivo con acentos (RFC 5987).
+  - Las firmas y el logo llegaron como imágenes chicas (176–287 px de
+    ancho): se ven bien en pantalla, pero si se imprime el certificado,
+    versiones de más resolución se verían más nítidas — basta reemplazar
+    los PNG en `assets/certificado/` con el mismo nombre.
 
 - [x] **Rediseño completo del panel admin, mobile-first (15 oct 2026)**
   — antes era un panel de prospectos con tema oscuro genérico, sin

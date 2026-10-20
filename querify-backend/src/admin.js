@@ -10,6 +10,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { config, query } = require('./db');
 const engine = require('./engine');
+const certificados = require('./certificados');
 
 const router = express.Router();
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c =>
@@ -708,8 +709,25 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       </div>
     </div>`).join('');
 
-  const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>` : '';
+  const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>`
+    : req.query.cert_enviado ? `<p class="pill ok">✓ Certificado enviado por correo.</p>`
+    : req.query.cert_error ? `<p class="pill bad">✗ ${esc(req.query.cert_error)}</p>`
+    : '';
   const pendientes = pagos.filter(p => p.estado !== 'pagado').length;
+
+  // Generar el PDF tarda unos segundos (abre un Chrome en el servidor): se
+  // deshabilita el botón al enviar para que un doble toque no mande dos correos.
+  const certificado = `
+    <h2>Certificado</h2>
+    <div class="card">
+      ${a.certificado_token ? `<p class="pill" style="margin:0 0 12px">Enviado el ${fmt(a.certificado_subido_en)}</p>` : ''}
+      <div class="actions" style="margin-top:0">
+        ${a.certificado_token ? `<a class="btn ghost" href="/certificados/${a.certificado_token}" target="_blank">Ver</a>` : ''}
+        <form method="post" action="/admin/alumno/${a.id}/certificado/enviar" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Enviando…'">
+          <button class="btn" type="submit"${a.correo ? '' : ' disabled'}>Enviar certificado</button>
+        </form>
+      </div>
+    </div>`;
 
   res.send(layout(a.nombre, `
     <h1>${esc(a.nombre)}${a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
@@ -728,8 +746,34 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
       <button class="btn ghost" type="submit">Liquidar</button>
     </form>` : ''}
-    <div class="pagos">${filasPago}</div>`,
+    <div class="pagos">${filasPago}</div>
+    ${certificado}`,
     { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
+});
+
+// Genera el PDF desde la plantilla HTML (certificados.js), lo guarda como el
+// certificado vigente del alumno (token nuevo cada vez) y manda el correo con
+// la liga de descarga — todo en un paso.
+router.post('/alumno/:id/certificado/enviar', requireAuth, async (req, res) => {
+  const volver = (q) => res.redirect(`/admin/alumno/${req.params.id}?${q}`);
+  const { rows } = await query(
+    `SELECT a.nombre, a.correo, c.curso FROM alumnos a JOIN cohortes c ON c.id = a.cohorte_id WHERE a.id = $1`,
+    [req.params.id]);
+  const a = rows[0];
+  if (!a) return res.status(404).send(layout('No encontrado', '<div class="empty">Alumno no encontrado.</div>', { back: '/admin/alumnos', section: 'alumnos' }));
+  if (!a.correo) return volver(`cert_error=${encodeURIComponent('Este alumno no tiene correo registrado.')}`);
+
+  let buffer;
+  try {
+    buffer = await certificados.generarCertificado({ nombre: a.nombre, curso: a.curso });
+  } catch (err) {
+    console.error('[certificado] no se pudo generar el PDF:', err.message);
+    return volver(`cert_error=${encodeURIComponent('No se pudo generar el certificado.')}`);
+  }
+  await engine.subirCertificado({ alumnoId: req.params.id, buffer, nombreArchivo: `Certificado ${a.nombre}.pdf` });
+  const r = await engine.enviarCertificado(req.params.id);
+  if (!r.ok) return volver(`cert_error=${encodeURIComponent('Se generó el certificado pero no se pudo mandar el correo.')}`);
+  volver('cert_enviado=1');
 });
 
 router.post('/alumno/:id/pago/:pagoId/marcar-pagado', requireAuth, async (req, res) => {

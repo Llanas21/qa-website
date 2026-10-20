@@ -64,6 +64,12 @@ const config = {
   // de Stripe en vez de derivarlo de la petición (útil detrás de proxies raros).
   publicBaseUrl: env('PUBLIC_BASE_URL'),
 
+  // Chrome con el que se convierte la plantilla HTML del certificado a PDF.
+  // Vacío = el Chrome empaquetado de @sparticuz/chromium (solo Linux, es lo
+  // que usa Railway). En Windows/macOS para desarrollo local hay que apuntarlo
+  // al Chrome instalado, ej. C:\Program Files\Google\Chrome\Application\chrome.exe
+  chromePath: env('CHROME_PATH'),
+
   seq: {
     step1: num('SEQ_STEP1_HOURS', 24),
     step2: num('SEQ_STEP2_HOURS', 72),

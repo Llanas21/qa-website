@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS alumnos (
 );
 -- Migración en línea para bases creadas antes de que existiera `archivado`:
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT false;
+-- Certificado de finalización: el PDF se guarda directo en la base (no hay
+-- almacenamiento de archivos persistente en el contenedor de Railway — se
+-- pierde en cada deploy) y se sirve público por un token aleatorio, no por
+-- el id del alumno, para que la liga no sea adivinable.
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_pdf BYTEA;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_nombre TEXT;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_token TEXT UNIQUE;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_subido_en TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_alumnos_cohorte   ON alumnos (cohorte_id);
 CREATE INDEX IF NOT EXISTS idx_alumnos_prospecto ON alumnos (prospecto_id);
 

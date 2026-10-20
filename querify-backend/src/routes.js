@@ -123,6 +123,25 @@ router.post('/api/inscripcion', async (req, res) => {
   }
 });
 
+/* --------------------- GET /certificados/:token (descarga pública) --------------------- */
+// Sin login — es la liga que recibe el alumno por correo. El token es
+// aleatorio (ver engine.subirCertificado), no el id del alumno, así que no
+// se puede adivinar la liga de alguien más por tanteo.
+router.get('/certificados/:token', async (req, res) => {
+  const { rows } = await query(
+    `SELECT nombre, certificado_pdf, certificado_nombre FROM alumnos WHERE certificado_token = $1`,
+    [req.params.token]);
+  const a = rows[0];
+  if (!a || !a.certificado_pdf) return res.status(404).send('Certificado no encontrado.');
+  // El nombre lleva el del alumno (con acentos): filename= va sin acentos
+  // como respaldo y filename*= (RFC 5987) lleva el nombre real en UTF-8.
+  const archivo = a.certificado_nombre || 'certificado.pdf';
+  const ascii = archivo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]|["\\]/g, '');
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(archivo)}`);
+  res.send(a.certificado_pdf);
+});
+
 /* --------------------- Webhook de Stripe --------------------- */
 // req.body llega como Buffer sin parsear (express.raw en server.js, solo esta ruta).
 router.post('/webhook/stripe', async (req, res) => {

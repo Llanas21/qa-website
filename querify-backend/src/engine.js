@@ -1,4 +1,5 @@
 // src/engine.js — lógica de negocio: canal, deduplicado, alta y secuencia
+const crypto = require('crypto');
 const { config, query } = require('./db');
 const providers = require('./providers');
 const tpl = require('./templates');
@@ -353,6 +354,40 @@ async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo }) {
   return { ok: true, alumno };
 }
 
+// Sube (o reemplaza) el PDF del certificado de un alumno y genera un token
+// aleatorio nuevo para la liga pública de descarga (/certificados/:token,
+// ver routes.js) — el token no es el id del alumno a propósito, para que
+// la liga no sea adivinable por alguien más.
+async function subirCertificado({ alumnoId, buffer, nombreArchivo }) {
+  const token = crypto.randomBytes(20).toString('hex');
+  const { rows } = await query(
+    `UPDATE alumnos SET certificado_pdf = $2, certificado_nombre = $3,
+       certificado_token = $4, certificado_subido_en = now()
+     WHERE id = $1 RETURNING id, certificado_token`,
+    [alumnoId, buffer, nombreArchivo, token]);
+  return rows[0] || null;
+}
+
+// Manda el correo de "tu certificado ya está listo" con la liga de descarga
+// pública — requiere haber subido el PDF antes con subirCertificado().
+async function enviarCertificado(alumnoId) {
+  const { rows } = await query(
+    `SELECT a.*, c.curso FROM alumnos a JOIN cohortes c ON c.id = a.cohorte_id WHERE a.id = $1`,
+    [alumnoId]);
+  const alumno = rows[0];
+  if (!alumno) return { ok: false, motivo: 'alumno_no_existe' };
+  if (!alumno.certificado_token) return { ok: false, motivo: 'sin_certificado' };
+  if (!alumno.correo) return { ok: false, motivo: 'sin_correo' };
+
+  const link = `${baseUrl()}/certificados/${alumno.certificado_token}`;
+  const ok = await enviarConVars({
+    pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
+    canal: 'correo', tipo: 'certificado', vars: [alumno.nombre, alumno.curso, link],
+    onLog: (m) => registrarMensajeAlumno(alumnoId, m),
+  });
+  return { ok };
+}
+
 // Confirma un pago 2-5 ya generado (webhook de Stripe o marcado manual desde el panel).
 async function confirmarPago({ pagoId, metodo = 'stripe', stripeSessionId = null, stripePaymentIntentId = null }) {
   const { rows } = await query(
@@ -451,4 +486,5 @@ module.exports = {
   altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
+  subirCertificado, enviarCertificado,
 };

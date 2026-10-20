@@ -1,6 +1,7 @@
 // src/templates.js — contenido de los mensajes de la secuencia + cobro de pagos
-// Variables: {{1}} nombre, {{2}} curso, {{3}} fecha de inicio (solo "valor") o
-// número de pago (solo "pago"), {{4}} monto y {{5}} liga de pago (solo "pago").
+// Variables: {{1}} nombre, {{2}} curso, {{3}} fecha de inicio (solo "valor"),
+// número de pago (solo "pago") o liga de descarga (solo "certificado"),
+// {{4}} monto y {{5}} liga de pago (solo "pago").
 // Para WhatsApp se envían como PLANTILLAS de Meta por nombre + parámetros
 // (código dejado intacto aunque ya no se use — ver ESTADO.md, sitio solo correo
 // desde el 1 oct 2026). Para correo / modo simulación se usa `render()` (texto
@@ -31,6 +32,7 @@ const asunto = {
   cierre:      'Seguimos aquí cuando estés listo — {{2}}',
   pago:        'Pago {{3}}/5 por vencer — curso de {{2}}',
   inscripcion: '¡Tu lugar quedó apartado! — curso de {{2}}',
+  certificado: '¡Tu certificado de {{2}} ya está listo! 🎓',
 };
 
 const cuerpo = {
@@ -70,10 +72,17 @@ En cuanto lo confirmes, tu lugar sigue asegurado sin problema. Cualquier duda, a
 Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.
 
 ¡Bienvenido a Querify Analytics! 🙌`,
+
+  certificado: `¡Hola {{1}}! 🎓 Terminaste el curso de {{2}} — felicidades, el esfuerzo valió la pena.
+
+Aquí puedes descargar tu certificado:
+🔗 {{3}}
+
+¡Gracias por tomar el curso con Querify Analytics, esperamos verte pronto en otro! 🙌`,
 };
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
-const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2 };
+const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2, certificado: 3 };
 
 // {{N}} genérico (antes solo soportaba {{1}}..{{3}}) para poder agregar la
 // plantilla de "pago" sin tocar el reemplazo de las 4 plantillas existentes.
@@ -204,6 +213,15 @@ const contenidoHtml = {
     </td></tr></table>
     <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.</p>
     <p style="margin:0;font-size:15px;line-height:1.6;color:${T.text}">¡Bienvenido a Querify Analytics! 🙌</p>`,
+
+  certificado: (v) => `
+    <p style="margin:0 0 4px;font-size:34px">🎓</p>
+    <p style="margin:0 0 16px;font-size:17px;line-height:1.5;color:${T.ink}"><b>¡Hola ${esc(v[0])}!</b></p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.okSoft};border-radius:10px;margin:0 0 22px"><tr><td style="padding:16px 18px;text-align:center">
+      <p style="margin:0;font-size:15px;line-height:1.6;color:${T.okInk}">Terminaste el curso de <b>${esc(v[1])}</b> — felicidades, el esfuerzo valió la pena.</p>
+      ${boton('Descargar certificado', v[2], 'center')}
+    </td></tr></table>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${T.text}">Gracias por tomar el curso con Querify Analytics, esperamos verte pronto en otro 🙌</p>`,
 };
 
 // Devuelve el HTML completo listo para mandar (el que de verdad ve la persona).
