@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 19 de octubre de 2026
+Última actualización: 23 de octubre de 2026
 
 ## Qué es
 
@@ -38,6 +38,40 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Pago por transferencia SPEI con Stripe (23 oct 2026)** — antes, quien
+  no quería pagar con tarjeta transfería a la cuenta personal del usuario y
+  él registraba el pago a mano. Ahora:
+  - La página de pago de Stripe (inscripción y pagos 2-5) ofrece **Tarjeta**
+    o **Transferencia bancaria**. Cada alumno es un Customer de Stripe con
+    una **CLABE fija y propia** (uno por correo, se reutiliza), así Stripe
+    sabe de quién es cada transferencia aunque todos manden $500.
+  - Si elige transferencia: Stripe le muestra los datos en su propia página
+    (no regresa a `inscripcion-gracias.html`) y le mandamos el correo
+    `transferencia` con monto/CLABE/banco/titular. Al llegar el dinero llega
+    `checkout.session.async_payment_succeeded` → alta del alumno (pago 1) o
+    pago 2-5 marcado, con `metodo = 'transferencia'`.
+  - Si transfiere **directo a su CLABE** sin abrir liga
+    (`customer_cash_balance_transaction.created`), `engine.procesarTransferencia`
+    cubre sus pagos pendientes en orden mientras alcance el saldo; lo que
+    sobre queda como saldo a favor. No hace nada si hay un pago abierto por
+    transferencia (Stripe se lo aplica solo a ese).
+  - Un pago abierto por transferencia que ya no corresponde (el pago se
+    cubrió por otra vía, o se abrió una inscripción nueva) se cancela: si
+    no, se tragaría la siguiente transferencia del alumno.
+  - Panel: tarjeta **"Transferencia"** en la ficha del alumno (CLABE, saldo a
+    favor, "Copiar CLABE"/"Copiar mensaje" para WhatsApp, "Generar CLABE"
+    para altas manuales; "Simular transferencia" solo con llave de prueba).
+  - En Stripe (modo real) se activaron Transferencias bancarias y se
+    agregaron al webhook `checkout.session.async_payment_succeeded` y
+    `customer_cash_balance_transaction.created`.
+  - Comisión: ~$7 MXN + IVA por transferencia (vs ~$21 con tarjeta en un
+    pago de $500). El cupo se ocupa cuando llega el dinero, igual que con
+    tarjeta. Saldo nunca aplicado: Stripe lo reembolsa solo a los 75 días.
+  - Probar en local: `stripe listen --forward-to localhost:3000/webhook/stripe`
+    (eventos de arriba + `checkout.session.completed`) y simular la
+    transferencia con `stripe.testHelpers.customers.fundCashBalance` (o el
+    botón del panel cuando el alumno ya existe).
 
 - [x] **Incidente + baja de alumnos + correo de bienvenida opcional (20 oct
   2026)**
@@ -828,7 +862,11 @@ Cambios concretos:
   seguimiento), no se implementa cobro recurrente automático con tarjeta
   guardada — mantiene todo en un solo mecanismo de envío ya probado.
 - **El cupo se ocupa al confirmar el pago 1, no al iniciar el checkout:**
-  evita reservar lugares de gente que abre el link y no paga.
+  evita reservar lugares de gente que abre el link y no paga. Aplica igual
+  a transferencia: el lugar se aparta cuando llega el dinero.
+- **Transferencias por Stripe con CLABE fija por alumno** (23 oct 2026), no
+  una CLABE compartida: con una sola CLABE no hay forma de saber de quién
+  es cada transferencia de $500.
 
 ## Cómo correr el proyecto en local
 

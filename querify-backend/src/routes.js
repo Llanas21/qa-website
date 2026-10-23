@@ -154,8 +154,11 @@ router.post('/webhook/stripe', async (req, res) => {
   }
   res.sendStatus(200); // Stripe reintenta si no responde rápido; procesamos después.
   try {
-    if (event.type === 'checkout.session.completed') {
-      await engine.procesarWebhookStripe(event.data.object);
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      await engine.procesarWebhookStripe(event.data.object, event.type);
+    } else if (event.type === 'customer_cash_balance_transaction.created' && event.data.object.type === 'funded') {
+      // Llegó una transferencia SPEI a la CLABE de un alumno.
+      await engine.procesarTransferencia(event.data.object.customer);
     }
   } catch (err) {
     console.error('[webhook/stripe]', err.message);

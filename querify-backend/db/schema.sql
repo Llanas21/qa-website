@@ -70,6 +70,13 @@ ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS archivado BOOLEAN NOT NULL DEFAULT 
 -- desde el 20 oct 2026. `archivado` se conserva para los alumnos que ya lo
 -- tenían (lote histórico), pero ya no se activa desde el panel.
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMPTZ;
+-- CLABE fija por alumno para pagar por transferencia SPEI (ver
+-- engine.generarClabe/procesarTransferencia): un Customer de Stripe con
+-- instrucciones de transferencia. Lo que llega ahí cubre solo sus pagos.
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS clabe TEXT;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS clabe_banco TEXT;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS clabe_titular TEXT;
 -- Certificado de finalización: el PDF se guarda directo en la base (no hay
 -- almacenamiento de archivos persistente en el contenedor de Railway — se
 -- pierde en cada deploy) y se sirve público por un token aleatorio, no por
@@ -92,7 +99,7 @@ CREATE TABLE IF NOT EXISTS pagos (
   monto                      NUMERIC(10,2) NOT NULL DEFAULT 500.00,
   fecha_vencimiento          DATE NOT NULL,
   estado                     TEXT NOT NULL DEFAULT 'pendiente', -- 'pendiente'|'pagado'|'vencido'|'cancelado' (baja)
-  metodo                     TEXT,                          -- 'stripe'|'manual'
+  metodo                     TEXT,                          -- 'stripe'|'transferencia'|'manual'
   stripe_session_id          TEXT,
   stripe_payment_intent_id   TEXT,
   fecha_pago                 TIMESTAMPTZ,

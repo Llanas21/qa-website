@@ -2,6 +2,9 @@
 // Variables: {{1}} nombre, {{2}} curso, {{3}} fecha de inicio (solo "valor"),
 // número de pago (solo "pago") o liga de descarga (solo "certificado"),
 // {{4}} monto y {{5}} liga de pago (solo "pago").
+// "transferencia" (datos para pagar por SPEI tras elegirlo en la página de
+// pago) usa las suyas: {{3}} concepto, {{4}} monto, {{5}} CLABE, {{6}} banco,
+// {{7}} titular y {{8}} liga de Stripe con las instrucciones.
 // Para WhatsApp se envían como PLANTILLAS de Meta por nombre + parámetros
 // (código dejado intacto aunque ya no se use — ver ESTADO.md, sitio solo correo
 // desde el 1 oct 2026). Para correo / modo simulación se usa `render()` (texto
@@ -33,6 +36,7 @@ const asunto = {
   pago:        'Pago {{3}}/5 por vencer — curso de {{2}}',
   inscripcion: '¡Tu lugar quedó apartado! — curso de {{2}}',
   certificado: '¡Tu certificado de {{2}} ya está listo! 🎓',
+  transferencia: 'Datos para tu transferencia — curso de {{2}}',
 };
 
 const cuerpo = {
@@ -64,6 +68,7 @@ El curso de {{2}} sigue disponible cuando estés listo — solo escríbeme y con
 
 💳 Monto: $ {{4}} MXN
 🔗 Liga de pago segura (Stripe): {{5}}
+Ahí puedes pagar con tarjeta o con transferencia bancaria.
 
 En cuanto lo confirmes, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌`,
 
@@ -79,10 +84,21 @@ Aquí puedes descargar tu certificado:
 🔗 {{3}}
 
 ¡Gracias por tomar el curso con Querify Analytics, esperamos verte pronto en otro! 🙌`,
+
+  transferencia: `Hola {{1}}, aquí están los datos para tu transferencia del curso de {{2}} ({{3}}):
+
+💳 Monto: $ {{4}} MXN
+🏦 CLABE: {{5}}
+Banco: {{6}}
+A nombre de: {{7}}
+
+Transfiere el monto exacto. En cuanto llegue, tu pago se registra solo. Esta CLABE es solo tuya: guárdala para tus siguientes pagos.
+
+Instrucciones completas: {{8}}`,
 };
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
-const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2, certificado: 3 };
+const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2, certificado: 3, transferencia: 8 };
 
 // {{N}} genérico (antes solo soportaba {{1}}..{{3}}) para poder agregar la
 // plantilla de "pago" sin tocar el reemplazo de las 4 plantillas existentes.
@@ -203,7 +219,7 @@ const contenidoHtml = {
       <p style="margin:0 0 16px;font-size:28px;font-weight:700;color:${T.ink}">$${esc(v[3])} <span style="font-size:15px;font-weight:400;color:${T.muted}">MXN</span></p>
       ${boton('Pagar ahora', v[4], 'center')}
     </td></tr></table>
-    <p style="margin:0;font-size:14px;line-height:1.6;color:${T.muted}">Pago seguro procesado por Stripe. En cuanto se confirme, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌</p>`,
+    <p style="margin:0;font-size:14px;line-height:1.6;color:${T.muted}">Puedes pagar con tarjeta o con transferencia bancaria (SPEI). Pago seguro procesado por Stripe. En cuanto se confirme, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌</p>`,
 
   inscripcion: (v) => `
     <p style="margin:0 0 4px;font-size:34px">🎉</p>
@@ -223,6 +239,20 @@ const contenidoHtml = {
     </td></tr></table>
     <p style="margin:0;font-size:15px;line-height:1.6;color:${T.text}">Gracias por tomar el curso con Querify Analytics, esperamos verte pronto en otro 🙌</p>`,
 };
+
+// Agrupa la CLABE (3-3-11-1) para que se lea y se dicte fácil.
+const clabeFmt = c => String(c ?? '').replace(/^(\d{3})(\d{3})(\d{11})(\d)$/, '$1 $2 $3 $4');
+contenidoHtml.transferencia = (v) => `
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, aquí están los datos para tu transferencia del curso de <b>${esc(v[1])}</b> (${esc(v[2])}):</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.surface2};border:1px solid ${T.line};border-radius:10px;margin:0 0 22px"><tr><td style="padding:18px 20px">
+      <p style="margin:0 0 4px;font-size:13px;color:${T.muted}">Monto a transferir</p>
+      <p style="margin:0 0 14px;font-size:26px;font-weight:700;color:${T.ink}">$${esc(v[3])} <span style="font-size:15px;font-weight:400;color:${T.muted}">MXN</span></p>
+      <p style="margin:0 0 4px;font-size:13px;color:${T.muted}">CLABE</p>
+      <p style="margin:0 0 14px;font-size:20px;font-weight:700;letter-spacing:.5px;color:${T.ink};font-family:Consolas,'Courier New',monospace">${esc(clabeFmt(v[4]))}</p>
+      <p style="margin:0;font-size:14.5px;line-height:1.7;color:${T.text}">Banco: <b>${esc(v[5])}</b><br>A nombre de: <b>${esc(v[6])}</b></p>
+    </td></tr></table>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">Transfiere el monto exacto. En cuanto llegue, tu pago se registra solo. <b>Esta CLABE es solo tuya:</b> guárdala para tus siguientes pagos.</p>
+    ${v[7] ? boton('Ver instrucciones', v[7]) : ''}`;
 
 // Devuelve el HTML completo listo para mandar (el que de verdad ve la persona).
 function renderHtml(tipo, vars) {

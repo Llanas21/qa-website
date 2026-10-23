@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const { config, query } = require('./db');
 const engine = require('./engine');
 const certificados = require('./certificados');
+const providers = require('./providers');
 
 const router = express.Router();
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c =>
@@ -726,6 +727,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     : req.query.cert_enviado ? `<p class="pill ok">✓ Certificado enviado por correo.</p>`
     : req.query.cert_error ? `<p class="pill bad">✗ ${esc(req.query.cert_error)}</p>`
     : req.query.baja ? `<p class="pill ok">✓ Alumno dado de baja: su lugar quedó libre y sus pagos pendientes se cancelaron.</p>`
+    : req.query.clabe_error ? `<p class="pill bad">✗ ${esc(req.query.clabe_error)}</p>`
     : '';
   const pendientes = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido').length;
 
@@ -741,6 +743,58 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
           <button class="btn" type="submit"${a.correo ? '' : ' disabled'}>Enviar certificado</button>
         </form>
       </div>
+    </div>`;
+
+  // CLABE fija del alumno (ver engine.generarClabe): lo que transfiera ahí
+  // se registra solo como pagado. El saldo a favor se consulta en vivo a
+  // Stripe — si falla, simplemente no se muestra.
+  let saldo = 0;
+  if (a.clabe && a.stripe_customer_id) {
+    try { saldo = await providers.saldoTransferencias(a.stripe_customer_id); } catch (err) { console.error('[clabe] saldo:', err.message); }
+  }
+  const clabeFmt = a.clabe ? a.clabe.replace(/^(\d{3})(\d{3})(\d{11})(\d)$/, '$1 $2 $3 $4') : '';
+  const mensajeClabe = a.clabe ? [
+    `Hola ${a.nombre.split(' ')[0]}, para tus pagos del curso de ${a.curso} puedes transferir a esta CLABE, que es solo tuya:`,
+    '', a.clabe, `Banco: ${a.clabe_banco}`, `A nombre de: ${a.clabe_titular}`, '',
+    `Cada pago es de $${config.pagos.monto} MXN y se registra solo en cuanto llega. Guárdala en tu banco para tus siguientes pagos.`,
+  ].join('\n') : '';
+  const transferencia = a.fecha_baja ? '' : `
+    <h2>Transferencia</h2>
+    <div class="card">
+      ${a.clabe ? `
+      <div class="kv">
+        <div class="k">CLABE</div><div style="font-family:'IBM Plex Mono',monospace;font-weight:600">${esc(clabeFmt)}</div>
+        <div class="k">Banco</div><div>${esc(a.clabe_banco)}</div>
+        <div class="k">A nombre de</div><div>${esc(a.clabe_titular)}</div>
+        ${saldo > 0 ? `<div class="k">Saldo a favor</div><div>$${saldo} MXN</div>` : ''}
+      </div>
+      <div class="actions">
+        <button class="btn ghost" type="button" data-copiar="${esc(a.clabe)}">Copiar CLABE</button>
+        <button class="btn" type="button" data-copiar="${esc(mensajeClabe)}">Copiar mensaje</button>
+      </div>
+      ${providers.stripeEnPrueba() ? `
+      <form method="post" action="/admin/alumno/${a.id}/simular-transferencia" style="margin-top:14px;padding-top:14px;border-top:1px dashed #cbd5e1"
+            onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Esperando a Stripe…'">
+        <p class="sub" style="margin:0 0 8px">Modo de prueba: simula que el alumno transfirió.</p>
+        <div class="actions" style="margin-top:0">
+          <input name="monto" type="number" min="1" step="1" value="${config.pagos.monto}" style="max-width:130px" aria-label="Monto en MXN">
+          <button class="btn ghost" type="submit">Simular transferencia</button>
+        </div>
+      </form>` : ''}
+      <script>
+        document.querySelectorAll('[data-copiar]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var t = b.textContent;
+            navigator.clipboard.writeText(b.dataset.copiar).then(function () {
+              b.textContent = '✓ Copiado'; setTimeout(function () { b.textContent = t; }, 1600);
+            });
+          });
+        });
+      </script>` : `
+      <p class="sub" style="margin:0 0 12px">Genera una CLABE solo para este alumno: lo que transfiera ahí se marca pagado automáticamente.</p>
+      <form method="post" action="/admin/alumno/${a.id}/clabe" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Generando…'">
+        <button class="btn" type="submit">Generar CLABE</button>
+      </form>`}
     </div>`;
 
   res.send(layout(a.nombre, `
@@ -761,6 +815,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       <button class="btn ghost" type="submit">Liquidar</button>
     </form>` : ''}
     <div class="pagos">${filasPago}</div>
+    ${transferencia}
     ${certificado}`,
     { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
 });
@@ -804,6 +859,27 @@ router.post('/alumno/:id/liquidar', requireAuth, async (req, res) => {
   for (const p of pendientes) {
     await engine.confirmarPago({ pagoId: p.id, metodo: 'manual' });
   }
+  res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+router.post('/alumno/:id/clabe', requireAuth, async (req, res) => {
+  const r = await engine.generarClabe(req.params.id);
+  res.redirect(`/admin/alumno/${req.params.id}${r.ok ? '' : `?clabe_error=${encodeURIComponent(r.error)}`}`);
+});
+
+// Solo modo de prueba (ver providers.simularTransferencia). El webhook llega
+// unos segundos después, así que se espera un poco antes de volver a la
+// ficha para que ya se vean los pagos marcados.
+router.post('/alumno/:id/simular-transferencia', requireAuth, async (req, res) => {
+  const { rows } = await query(`SELECT stripe_customer_id FROM alumnos WHERE id = $1`, [req.params.id]);
+  const monto = Number(req.body.monto);
+  if (!rows[0]?.stripe_customer_id || !(monto > 0)) return res.redirect(`/admin/alumno/${req.params.id}`);
+  try {
+    await providers.simularTransferencia({ customerId: rows[0].stripe_customer_id, monto });
+  } catch (err) {
+    return res.redirect(`/admin/alumno/${req.params.id}?clabe_error=${encodeURIComponent(err.message)}`);
+  }
+  await new Promise(r => setTimeout(r, 6000));
   res.redirect(`/admin/alumno/${req.params.id}`);
 });
 

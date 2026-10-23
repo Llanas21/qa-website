@@ -259,6 +259,22 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
   if (!cohorte || !cohorte.fecha_inicio) return { ok: false, motivo: 'cohorte_no_existe' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
 
+  // Cliente de Stripe (uno por correo) para que la página de pago ofrezca
+  // también transferencia a su CLABE fija. Si abrió antes otro pago de
+  // inscripción por transferencia y no lo pagó, se cancela: si no, ese pago
+  // viejo se quedaría con su transferencia en vez de este. Si algo de esto
+  // falla, se sigue solo con tarjeta en vez de no dejarlo pagar.
+  let customerId = null;
+  if (!config.simulate.stripe) {
+    try {
+      customerId = await providers.clienteStripe({ nombre, correo });
+      await providers.cancelarTransferenciasAbiertas(customerId, m => m.tipo === 'inscripcion');
+    } catch (err) {
+      console.error('[inscripcion] sin opción de transferencia:', err.message);
+      customerId = null;
+    }
+  }
+
   const r = await providers.crearCheckoutSession({
     descripcion: `Pago 1/5 — curso de ${cohorte.curso} (apartado de lugar)`,
     monto: config.pagos.monto,
@@ -267,7 +283,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
       whatsapp_pais: whatsapp?.pais || '', whatsapp: whatsapp?.numero || '',
       correo: correo || '', prospecto_id: prospectoId ? String(prospectoId) : '',
     },
-    urlExito, urlCancelado,
+    urlExito, urlCancelado, customerId,
   });
   if (!r.ok) return { ok: false, motivo: 'error_stripe', error: r.error };
 
@@ -286,7 +302,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
 // Confirma el pago 1: crea al alumno, genera los 5 pagos programados (el 1 ya
 // 'pagado') y ocupa el cupo de la cohorte. Idempotente por stripe_session_id,
 // para no duplicar el alta si Stripe reenvía el mismo webhook.
-async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, metodo = 'stripe', enviarBienvenida = true }) {
+async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, stripeCustomerId = null, metodo = 'stripe', enviarBienvenida = true }) {
   if (stripeSessionId) {
     const existe = await query(
       `SELECT a.* FROM alumnos a JOIN pagos p ON p.alumno_id = a.id
@@ -298,9 +314,20 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
   if (!cohorte) throw new Error(`cohorte #${cohorteId} no existe`);
 
   const { rows: [alumno] } = await query(
-    `INSERT INTO alumnos (prospecto_id, cohorte_id, nombre, whatsapp_pais, whatsapp, correo)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [prospectoId || null, cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null]);
+    `INSERT INTO alumnos (prospecto_id, cohorte_id, nombre, whatsapp_pais, whatsapp, correo, stripe_customer_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [prospectoId || null, cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null, stripeCustomerId]);
+
+  // Su CLABE fija (la misma que vio si pagó por transferencia) para la
+  // tarjeta "Transferencia" del panel. No es indispensable: si falla, se
+  // obtiene después con "Generar CLABE".
+  if (stripeCustomerId) {
+    try {
+      const d = await providers.datosTransferencia(stripeCustomerId);
+      await query(`UPDATE alumnos SET clabe = $2, clabe_banco = $3, clabe_titular = $4 WHERE id = $1`,
+        [alumno.id, d.clabe, d.banco, d.titular]);
+    } catch (err) { console.error(`[inscripcion] no se pudo leer la CLABE de ${stripeCustomerId}: ${err.message}`); }
+  }
 
   // Se ancla a medianoche UTC del día calendario de la cohorte (leído con
   // getters locales, como lo construye pg-types) y desde ahí se suman
@@ -413,7 +440,7 @@ async function enviarCertificado(alumnoId) {
   return { ok };
 }
 
-// Confirma un pago 2-5 ya generado (webhook de Stripe o marcado manual desde el panel).
+// Confirma un pago 2-5 ya generado (webhook de Stripe, transferencia o marcado manual desde el panel).
 async function confirmarPago({ pagoId, metodo = 'stripe', stripeSessionId = null, stripePaymentIntentId = null }) {
   const { rows } = await query(
     `UPDATE pagos SET estado = 'pagado', metodo = $2,
@@ -428,26 +455,158 @@ async function confirmarPago({ pagoId, metodo = 'stripe', stripeSessionId = null
       tipo: 'pago', canal: 'sistema', estado: 'nota',
       contenido: `Pago ${pago.numero_pago}/5 marcado como pagado (${metodo}).`,
     });
+    // Si para este mismo pago dejó abierta una transferencia (eligió
+    // "transferencia" en una liga y luego pagó por otra vía), se cancela:
+    // si no, se quedaría con su siguiente transferencia como pago de algo
+    // que ya está cubierto.
+    const { rows: [a] } = await query(`SELECT stripe_customer_id FROM alumnos WHERE id = $1`, [pago.alumno_id]);
+    if (a?.stripe_customer_id && !config.simulate.stripe) {
+      await providers.cancelarTransferenciasAbiertas(a.stripe_customer_id, m => m.pago_id === String(pago.id))
+        .catch(err => console.error(`[pago] no se pudieron revisar transferencias abiertas: ${err.message}`));
+    }
   }
   return pago;
 }
 
-// Punto de entrada del webhook de Stripe: decide si el checkout.session.completed
-// corresponde al pago 1 (inscripción) o a uno de los pagos 2-5.
-async function procesarWebhookStripe(session) {
+// Asigna al alumno su CLABE fija para transferencias (un Customer de Stripe
+// con instrucciones SPEI). Si ya tiene una, la regresa tal cual: la CLABE
+// es permanente y es la que el alumno guarda en su banco.
+async function generarClabe(alumnoId) {
+  const { rows } = await query(`SELECT * FROM alumnos WHERE id = $1`, [alumnoId]);
+  const alumno = rows[0];
+  if (!alumno) return { ok: false, error: 'El alumno no existe.' };
+  if (alumno.clabe) return { ok: true, alumno };
+  const r = await providers.crearClabe({ nombre: alumno.nombre, correo: alumno.correo });
+  if (!r.ok) return r;
+  const upd = await query(
+    `UPDATE alumnos SET stripe_customer_id = $2, clabe = $3, clabe_banco = $4, clabe_titular = $5
+     WHERE id = $1 RETURNING *`, [alumnoId, r.customerId, r.clabe, r.banco, r.titular]);
+  await registrarMensajeAlumno(alumnoId, {
+    tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: `CLABE para transferencias asignada: ${r.clabe}.`,
+  });
+  return { ok: true, alumno: upd.rows[0] };
+}
+
+// Llegó una transferencia a la CLABE de un alumno (webhook
+// customer_cash_balance_transaction.created). Si tiene un pago abierto por
+// transferencia (lo eligió en la página de pago), Stripe se lo aplica solo
+// y avisa con checkout.session.async_payment_succeeded — aquí no se hace
+// nada. Si transfirió directo a su CLABE, con el saldo que tenga se cubren
+// sus pagos pendientes en orden mientras alcance; lo que sobre se queda
+// como saldo a favor para la siguiente.
+// Las llamadas por cliente se encadenan para que dos webhooks seguidos no
+// cobren el mismo saldo dos veces.
+const colaTransferencias = new Map();
+function procesarTransferencia(customerId) {
+  const previa = colaTransferencias.get(customerId) || Promise.resolve();
+  const actual = previa.catch(() => {}).then(() => aplicarSaldo(customerId));
+  colaTransferencias.set(customerId, actual);
+  actual.finally(() => { if (colaTransferencias.get(customerId) === actual) colaTransferencias.delete(customerId); }).catch(() => {});
+  return actual;
+}
+
+async function aplicarSaldo(customerId) {
+  // Todavía no es alumno (pagó la inscripción por transferencia y el alta
+  // llega con async_payment_succeeded) — nada que hacer aquí.
+  const { rows: alumnos } = await query(
+    `SELECT * FROM alumnos WHERE stripe_customer_id = $1 AND fecha_baja IS NULL ORDER BY id`, [customerId]);
+  if (!alumnos.length) return { aplicados: 0 };
+  if ((await providers.transferenciasAbiertas(customerId)).length) return { aplicados: 0 };
+
+  let saldo = await providers.saldoTransferencias(customerId);
+  if (saldo <= 0) return { aplicados: 0 };
+  const pendientes = (await query(
+    `SELECT * FROM pagos WHERE alumno_id = ANY($1) AND estado IN ('pendiente', 'vencido')
+     ORDER BY fecha_vencimiento, numero_pago`, [alumnos.map(a => a.id)])).rows;
+
+  let aplicados = 0;
+  for (const p of pendientes) {
+    const monto = Number(p.monto);
+    if (saldo < monto) break;
+    const r = await providers.cobrarDeSaldo({
+      customerId, monto, descripcion: `Pago ${p.numero_pago}/5 — transferencia`,
+      metadata: { tipo: 'transferencia', pago_id: String(p.id) },
+    });
+    if (!r.ok) { console.error(`[transferencia] no se pudo aplicar al pago #${p.id}: ${r.error}`); break; }
+    await confirmarPago({ pagoId: p.id, metodo: 'transferencia', stripePaymentIntentId: r.paymentIntentId });
+    saldo -= monto;
+    aplicados++;
+  }
+
+  if (saldo > 0) {
+    await registrarMensajeAlumno(alumnos[alumnos.length - 1].id, {
+      tipo: 'pago', canal: 'sistema', estado: 'nota',
+      contenido: pendientes.length > aplicados
+        ? `Transferencia recibida: queda un saldo a favor de $${saldo} MXN, no alcanza para el siguiente pago. Se aplicará cuando complete el monto.`
+        : `Transferencia recibida: queda un saldo a favor de $${saldo} MXN y ya no tiene pagos pendientes.`,
+    });
+  }
+  return { aplicados, saldo };
+}
+
+// Eligió "transferencia" en la página de pago: Stripe no cobra nada todavía,
+// solo le muestra sus datos. Se los mandamos también por correo para que no
+// dependa de esa pantalla (puede cerrarla y transferir horas después).
+async function enviarDatosTransferencia(session) {
   const meta = session.metadata || {};
+  let est;
+  try { est = await providers.estadoCheckout(session.id); }
+  catch (err) { console.error(`[transferencia] no se pudo leer la sesión ${session.id}: ${err.message}`); return; }
+  if (!est.transferencia) return;
+
+  let destino;
+  if (meta.tipo === 'inscripcion') {
+    const cohorte = await cohortePorId(Number(meta.cohorte_id));
+    destino = { nombre: meta.nombre, correo: meta.correo, curso: cohorte?.curso || '', concepto: 'pago 1 de 5, con el que apartas tu lugar', alumnoId: null };
+  } else if (meta.tipo === 'pago' && meta.pago_id) {
+    const { rows: [p] } = await query(
+      `SELECT p.numero_pago, a.id AS alumno_id, a.nombre, a.correo, c.curso FROM pagos p
+       JOIN alumnos a ON a.id = p.alumno_id JOIN cohortes c ON c.id = a.cohorte_id WHERE p.id = $1`, [Number(meta.pago_id)]);
+    if (!p) return;
+    destino = { nombre: p.nombre, correo: p.correo, curso: p.curso, concepto: `pago ${p.numero_pago} de 5`, alumnoId: p.alumno_id };
+  } else return;
+
+  const t = est.transferencia;
+  await enviarConVars({
+    correo: destino.correo, canal: 'correo', tipo: 'transferencia',
+    vars: [destino.nombre, destino.curso, destino.concepto, Math.round(t.monto), t.clabe, t.banco, t.titular, t.url],
+    onLog: (m) => destino.alumnoId ? registrarMensajeAlumno(destino.alumnoId, m)
+      : (m.estado === 'fallido' ? console.error(`[transferencia] correo a ${destino.correo} falló: ${m.error}`) : null),
+  });
+}
+
+// Punto de entrada del webhook de Stripe:
+// - checkout.session.completed: pagó con tarjeta (payment_status 'paid') o
+//   eligió transferencia y aún no paga ('unpaid' → se le mandan los datos).
+// - checkout.session.async_payment_succeeded: llegó esa transferencia.
+// En los dos casos de pago se decide si es el pago 1 (inscripción) o un 2-5.
+async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.completed') {
+  const esTransferencia = tipoEvento === 'checkout.session.async_payment_succeeded';
+  if (!esTransferencia && session.payment_status !== 'paid') return enviarDatosTransferencia(session);
+
+  const meta = session.metadata || {};
+  const metodo = esTransferencia ? 'transferencia' : 'stripe';
   if (meta.tipo === 'inscripcion') {
     await confirmarInscripcion({
       cohorteId: Number(meta.cohorte_id), nombre: meta.nombre,
       whatsapp: meta.whatsapp ? { pais: meta.whatsapp_pais, numero: meta.whatsapp } : null,
       correo: meta.correo || null, prospectoId: meta.prospecto_id ? Number(meta.prospecto_id) : null,
       stripeSessionId: session.id, stripePaymentIntentId: session.payment_intent || null,
+      stripeCustomerId: session.customer || null, metodo,
     });
   } else if (meta.tipo === 'pago' && meta.pago_id) {
-    await confirmarPago({
-      pagoId: Number(meta.pago_id), metodo: 'stripe',
+    const pago = await confirmarPago({
+      pagoId: Number(meta.pago_id), metodo,
       stripeSessionId: session.id, stripePaymentIntentId: session.payment_intent || null,
     });
+    if (!pago) {
+      // Ya estaba pagado por otra vía: es un cobro doble, hay que revisarlo a mano.
+      const { rows: [p] } = await query(`SELECT alumno_id, numero_pago FROM pagos WHERE id = $1`, [Number(meta.pago_id)]);
+      if (p) await registrarMensajeAlumno(p.alumno_id, {
+        tipo: 'pago', canal: 'sistema', estado: 'nota',
+        contenido: `⚠ Llegó otro pago (${metodo}) del pago ${p.numero_pago}/5, que ya estaba pagado. Revisa en Stripe si hay que reembolsarlo (${session.payment_intent || session.id}).`,
+      });
+    }
   }
 }
 
@@ -461,7 +620,7 @@ async function revisarPagosPorVencer() {
   if (config.automatizacionPausada) return 0;
 
   const { rows } = await query(
-    `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, c.curso
+    `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, a.stripe_customer_id, c.curso
      FROM pagos p
      JOIN alumnos  a ON a.id = p.alumno_id
      JOIN cohortes c ON c.id = a.cohorte_id
@@ -481,12 +640,22 @@ async function revisarPagosPorVencer() {
   for (const p of rows) {
     const alumno = { id: p.alumno_id, nombre: p.nombre, whatsapp_pais: p.whatsapp_pais, whatsapp: p.whatsapp, correo: p.correo, curso: p.curso };
 
+    // Alumnos que no pasaron por la página de pago (alta manual, o inscritos
+    // antes de que hubiera transferencia) no tienen cliente de Stripe: se le
+    // asigna su CLABE aquí para que la liga ofrezca también transferencia.
+    let customerId = p.stripe_customer_id;
+    if (!customerId && !config.simulate.stripe) {
+      const g = await generarClabe(p.alumno_id);
+      customerId = g.ok ? g.alumno.stripe_customer_id : null;
+    }
+
     const r = await providers.crearCheckoutSession({
       descripcion: `Pago ${p.numero_pago}/5 — curso de ${p.curso}`,
       monto: Number(p.monto),
       metadata: { tipo: 'pago', pago_id: String(p.id) },
       urlExito: `${baseUrl()}/inscripcion-gracias.html?pago=${p.numero_pago}`,
       urlCancelado: `${baseUrl()}/admin`,
+      customerId,
     });
     if (!r.ok) { console.error(`[pagos] no se pudo crear checkout para pago #${p.id}: ${r.error}`); continue; }
 
@@ -516,5 +685,5 @@ module.exports = {
   altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
-  subirCertificado, enviarCertificado, darDeBaja,
+  subirCertificado, enviarCertificado, darDeBaja, generarClabe, procesarTransferencia,
 };
