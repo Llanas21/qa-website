@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 23 de octubre de 2026
+Última actualización: 28 de octubre de 2026
 
 ## Qué es
 
@@ -38,6 +38,33 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Recordatorios de cada grupo en el calendario de Outlook (28 oct 2026)**
+  - El usuario pasó su borrador de procesos ("Procesos Borrador.pdf":
+    planeación de 28 días antes, 2 días antes, primer/último día, al
+    terminar) y se volvió una **lista única de recordatorios para todos los
+    cursos** (`/admin/recordatorios`, editable). Decisión: una sola lista,
+    no una por curso — el proceso es el mismo y el evento lleva el nombre
+    del grupo.
+  - Cada grupo con fecha crea sus eventos en los calendarios de
+    `Jose_Llanas@` y `David_Amezquita@` (sin invitaciones por correo),
+    con la nomenclatura del usuario: `EXCEL-LM-MMYY`, `SQL-MJ-MMYY`,
+    `PYTHON-SAB-MMYY`, `POWERBI-SAB-MMYY`… Se crean **aunque ya hayan
+    pasado** (pedido del usuario: si registra un grupo tarde, ve qué ya
+    debía estar hecho). Aviso a las 10:00; los de varios días son una barra
+    de todo el día con aviso a las 10:00 del día anterior (opción elegida).
+  - Cohortes ahora tiene **Días** (LM/MJ entre semana, SAB sabatino — un
+    curso puede cambiar de días, y puede haber dos grupos entre semana del
+    mismo curso y fecha) y **Último día** (10 semanas por default, editable
+    por días festivos).
+  - **Cambiar la fecha de inicio de un grupo** ahora recorre su último día,
+    recalcula los pagos pendientes de sus alumnos (antes se quedaban con la
+    fecha vieja) y mueve sus eventos del calendario.
+  - Requiere el permiso de aplicación **Calendars.ReadWrite** en la app
+    "Querify Backend" de Entra y la variable `CALENDARIO_BUZONES` en Railway.
+  - Siguiente etapa posible (idea, no pedida aún): que el sistema cree solo
+    el canal de Teams y la carpeta de SharePoint del grupo en vez de
+    recordarlo.
 
 - [x] **Pago por transferencia SPEI con Stripe (23 oct 2026)** — antes, quien
   no quería pagar con tarjeta transfería a la cuenta personal del usuario y

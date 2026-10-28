@@ -10,6 +10,7 @@ const { config, pool, query } = require('./db');
 const publicRoutes = require('./routes');
 const admin = require('./admin');
 const engine = require('./engine');
+const calendario = require('./calendario');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de proxy (Railway/Render) para cookies seguras
@@ -73,7 +74,11 @@ async function main() {
   cron.schedule(config.seq.cron, () => {
     engine.correrSecuencia().catch(e => console.error('[cron]', e.message));
     engine.revisarPagosPorVencer().catch(e => console.error('[cron pagos]', e.message));
+    calendario.sincronizarPendientes().catch(e => console.error('[cron calendario]', e.message));
   });
+  // Al arrancar también: así un deploy (o una lista nueva de recordatorios)
+  // no espera a la siguiente hora en punto.
+  calendario.sincronizarPendientes().catch(e => console.error('[calendario]', e.message));
 
   const modo = Object.entries(config.simulate).filter(([, v]) => v).map(([k]) => k);
   app.listen(config.port, () => {

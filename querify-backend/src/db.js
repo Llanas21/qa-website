@@ -44,6 +44,16 @@ const config = {
     workbookItemId: env('GRAPH_WORKBOOK_ITEM_ID'), tableName: env('GRAPH_TABLE_NAME', 'Prospectos'),
   },
 
+  // Recordatorios de cada grupo en el calendario de Outlook (ver
+  // calendario.js). Se crean en cada buzón de la lista (separados por coma)
+  // con la misma app de Graph que el correo — requiere el permiso de
+  // aplicación Calendars.ReadWrite. Sin buzones (o sin Graph) se simula.
+  calendario: {
+    buzones: env('CALENDARIO_BUZONES').split(',').map(s => s.trim()).filter(Boolean),
+    hora: env('CALENDARIO_HORA', '10:00'),          // hora del aviso, hora del centro de México
+    zona: env('CALENDARIO_ZONA', 'Central Standard Time (Mexico)'), // nombre de Windows: el que Graph acepta siempre
+  },
+
   // Stripe Checkout para el apartado de lugar (pago 1) y los pagos 2-5.
   // Si falta STRIPE_SECRET_KEY, toda la inscripción corre en modo simulación.
   stripe: {
@@ -93,6 +103,7 @@ config.simulate = {
   whatsapp: !(config.whatsapp.token && config.whatsapp.phoneNumberId),
   email: !graphReady,
   sync: !(graphReady && config.graph.workbookItemId),
+  calendario: !(graphReady && config.calendario.buzones.length),
   stripe: !config.stripe.secretKey,
 };
 

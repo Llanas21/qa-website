@@ -38,9 +38,28 @@ CREATE TABLE IF NOT EXISTS cohortes (
   modalidad         TEXT NOT NULL,        -- 'entre_semana'|'sabatino'
   fecha_inicio      DATE,                 -- NULL hasta que el operador la fije
   cupo_maximo       INT  NOT NULL DEFAULT 10,
-  lugares_ocupados  INT  NOT NULL DEFAULT 0,
-  UNIQUE (curso, modalidad, fecha_inicio)
+  lugares_ocupados  INT  NOT NULL DEFAULT 0
 );
+-- Días de clase del grupo (28 oct 2026): 'LM' | 'MJ' entre semana, 'SAB'
+-- sabatino. Forman el nombre del grupo (EXCEL-LM-1126, ver
+-- calendario.codigoGrupo) y permiten dos grupos del mismo curso entre
+-- semana con la misma fecha, en días distintos. Default por curso para las
+-- cohortes que ya existían: Excel/Python LM, SQL Server/Power BI MJ.
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS dias TEXT;
+UPDATE cohortes SET dias = CASE WHEN modalidad = 'sabatino' THEN 'SAB'
+  WHEN curso IN ('Excel', 'Python') THEN 'LM' ELSE 'MJ' END WHERE dias IS NULL;
+-- Último día de clase. Por default 10 semanas (calendario.fechaFinPorDefecto),
+-- editable en Cohortes porque los días festivos lo recorren.
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS fecha_fin DATE;
+UPDATE cohortes SET fecha_fin = fecha_inicio + CASE WHEN dias = 'SAB' THEN 63 ELSE 65 END
+  WHERE fecha_fin IS NULL AND fecha_inicio IS NOT NULL;
+-- true = sus eventos del calendario de Outlook no están al día (cambió la
+-- fecha, los días o la lista de recordatorios, o falló la última vez); el
+-- cron los vuelve a intentar.
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS calendario_pendiente BOOLEAN NOT NULL DEFAULT true;
+-- Antes era UNIQUE (curso, modalidad, fecha_inicio); ahora incluye los días.
+ALTER TABLE cohortes DROP CONSTRAINT IF EXISTS cohortes_curso_modalidad_fecha_inicio_key;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cohortes_grupo ON cohortes (curso, modalidad, dias, fecha_inicio);
 CREATE INDEX IF NOT EXISTS idx_cohortes_curso ON cohortes (curso);
 CREATE INDEX IF NOT EXISTS idx_cohortes_fecha ON cohortes (fecha_inicio);
 -- El UNIQUE de arriba no evita duplicados mientras fecha_inicio es NULL
@@ -135,6 +154,57 @@ ALTER TABLE mensajes ADD COLUMN IF NOT EXISTS alumno_id INT REFERENCES alumnos(i
 CREATE INDEX IF NOT EXISTS idx_mensajes_prospecto ON mensajes (prospecto_id);
 CREATE INDEX IF NOT EXISTS idx_mensajes_alumno    ON mensajes (alumno_id);
 CREATE INDEX IF NOT EXISTS idx_mensajes_estado    ON mensajes (estado);
+
+-- Recordatorios del calendario (28 oct 2026): una sola lista para todos los
+-- cursos, editable en /admin/recordatorios. Cada uno se vuelve un evento de
+-- Outlook por grupo (ver calendario.js). `dia_desde`/`dia_hasta` cuentan
+-- desde la `ancla`: 'inicio' (día 0 = primera clase, negativos = antes) o
+-- 'fin' (día 0 = última clase). `dia_hasta` NULL = un solo día.
+CREATE TABLE IF NOT EXISTS recordatorios (
+  id         SERIAL PRIMARY KEY,
+  titulo     TEXT NOT NULL,
+  ancla      TEXT NOT NULL DEFAULT 'inicio',
+  dia_desde  INT  NOT NULL,
+  dia_hasta  INT,
+  notas      TEXT,
+  orden      INT  NOT NULL DEFAULT 0
+);
+-- Lista inicial: el borrador de procesos del usuario (planeación de 28 días,
+-- 2 días antes, durante y al finalizar). Solo si la tabla está vacía.
+INSERT INTO recordatorios (orden, ancla, dia_desde, dia_hasta, titulo, notas)
+SELECT * FROM (VALUES
+  (1,  'inicio', -28, -22, 'Realizar encarpetado para nuevo curso (OneDrive)', NULL),
+  (2,  'inicio', -28, -22, 'Grabar y editar video publicitario', NULL),
+  (3,  'inicio', -28, NULL, 'Actualizar información en el sitio web', NULL),
+  (4,  'inicio', -28, -25, 'Elaborar la planeación de campaña de 21 días alineada al presupuesto', NULL),
+  (5,  'inicio', -24, -22, 'Elaborar flyers publicitarios', NULL),
+  (6,  'inicio', -24, -22, 'Elaborar nuevas plantillas de mensajes', NULL),
+  (7,  'inicio', -21, NULL, 'Aplicar campaña(s) publicitaria(s)', 'La campaña corre 21 días, hasta un día antes del inicio.'),
+  (8,  'inicio', -21, -17, 'Pegar flyers publicitarios físicos', NULL),
+  (9,  'inicio', -11, NULL, 'Realizar primer seguimiento (Plantilla Seguimiento 1)', NULL),
+  (10, 'inicio', -4,  NULL, 'Realizar segundo seguimiento (Plantilla Seguimiento 2)', NULL),
+  (11, 'inicio', -2,  NULL, 'Contactar a los alumnos', 'Pedirles nombre completo y correo para Microsoft Teams, y darles los materiales necesarios para el primer día.'),
+  (12, 'inicio', -1,  NULL, 'Crear nuevo canal en el equipo de Teams', 'Usar la nomenclatura del grupo.'),
+  (13, 'inicio', -1,  NULL, 'Crear encarpetado en SharePoint y subir el material', NULL),
+  (14, 'inicio', 0,   NULL, 'Aplicar examen de diagnóstico', NULL),
+  (15, 'fin',    0,   NULL, 'Aplicar evaluación general', NULL),
+  (16, 'fin',    1,   NULL, 'Enviar certificados de finalización', NULL)
+) AS v(orden, ancla, dia_desde, dia_hasta, titulo, notas)
+WHERE NOT EXISTS (SELECT 1 FROM recordatorios);
+
+-- Evento de Outlook creado por grupo × recordatorio × buzón, para poder
+-- moverlo o borrarlo después. `firma` = hash del contenido enviado: si no
+-- cambió, no se vuelve a mandar. Sin FK a recordatorios a propósito: al
+-- borrar un recordatorio hay que borrar primero su evento en Outlook.
+CREATE TABLE IF NOT EXISTS cohorte_eventos (
+  id               SERIAL PRIMARY KEY,
+  cohorte_id       INT  NOT NULL REFERENCES cohortes(id) ON DELETE CASCADE,
+  recordatorio_id  INT  NOT NULL,
+  buzon            TEXT NOT NULL,
+  event_id         TEXT NOT NULL,
+  firma            TEXT,
+  UNIQUE (cohorte_id, recordatorio_id, buzon)
+);
 
 -- `fechas_inicio` queda reemplazada por `cohortes` (ver decisión en la
 -- conversación de esta funcionalidad) — se elimina si existía de antes.

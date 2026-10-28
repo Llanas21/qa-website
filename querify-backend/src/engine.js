@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { config, query } = require('./db');
 const providers = require('./providers');
 const tpl = require('./templates');
+const calendario = require('./calendario');
 
 const HORA = 3600 * 1000;
 const OFFSET = { 0: config.seq.step1, 1: config.seq.step2, 2: config.seq.step3 }; // horas desde inicio de secuencia
@@ -387,6 +388,75 @@ async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo, enviarBie
   return { ok: true, alumno };
 }
 
+// Alta de un grupo nuevo desde Cohortes. Los días y el último día tienen
+// default (ver calendario.js) si no se mandan.
+async function crearCohorte({ curso, modalidad, dias, fechaInicio, fechaFin, cupo }) {
+  const d = modalidad === 'sabatino' ? 'SAB' : (['LM', 'MJ'].includes(dias) ? dias : calendario.diasPorDefecto(curso, modalidad));
+  const fin = fechaInicio ? (fechaFin || calendario.fechaFinPorDefecto(fechaInicio, d)) : null;
+  if (fin && fechaInicio && fin < fechaInicio) return { ok: false, error: 'El último día no puede ser antes del inicio.' };
+  const { rows } = await query(
+    `INSERT INTO cohortes (curso, modalidad, dias, fecha_inicio, fecha_fin, cupo_maximo) VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (curso, modalidad, dias, fecha_inicio) DO NOTHING RETURNING id`,
+    [curso, modalidad, d, fechaInicio || null, fin, cupo]);
+  if (!rows[0]) return { ok: false, error: 'Ya existe ese grupo (mismo curso, días y fecha de inicio).' };
+  await calendario.marcarPendientes([rows[0].id]);
+  return { ok: true, id: rows[0].id };
+}
+
+// Edita un grupo desde Cohortes (solo los campos que se manden). Si cambia
+// la fecha de inicio: el último día se recorre lo mismo (salvo que también
+// lo hayan cambiado a mano), se recalculan los pagos pendientes de sus
+// alumnos y se mueven sus recordatorios del calendario.
+async function actualizarCohorte(id, { fechaInicio, fechaFin, dias, cupo }) {
+  const c = (await query(`SELECT * FROM cohortes WHERE id = $1`, [id])).rows[0];
+  if (!c) return { ok: false, error: 'El grupo no existe.' };
+  const viejoInicio = calendario.ymd(c.fecha_inicio), viejoFin = calendario.ymd(c.fecha_fin);
+  const inicio = fechaInicio !== undefined ? (fechaInicio || null) : viejoInicio;
+  const d = c.modalidad === 'sabatino' ? 'SAB' : (['LM', 'MJ'].includes(dias) ? dias : (c.dias || calendario.diasPorDefecto(c.curso, c.modalidad)));
+  let fin = fechaFin !== undefined ? (fechaFin || null) : viejoFin;
+  const cambioInicio = inicio !== viejoInicio;
+  const tocoFin = fin !== viejoFin;
+
+  if (!inicio) fin = null;
+  else if (cambioInicio && !tocoFin) fin = viejoInicio && viejoFin
+    ? calendario.sumarDias(viejoFin, calendario.diasEntre(viejoInicio, inicio))
+    : calendario.fechaFinPorDefecto(inicio, d);
+  else if (!fin) fin = calendario.fechaFinPorDefecto(inicio, d);
+  if (inicio && fin < inicio) return { ok: false, error: `${calendario.codigoGrupo({ ...c, fecha_inicio: inicio, dias: d })}: el último día no puede ser antes del inicio.` };
+
+  const nuevoCupo = Number.isInteger(cupo) && cupo > 0 ? cupo : c.cupo_maximo;
+  try {
+    await query(`UPDATE cohortes SET fecha_inicio = $2, fecha_fin = $3, dias = $4, cupo_maximo = $5 WHERE id = $1`,
+      [id, inicio, fin, d, nuevoCupo]);
+  } catch (err) {
+    if (err.code === '23505') return { ok: false, error: `Ya existe otro grupo de ${c.curso} con esos días y esa fecha de inicio.` };
+    throw err;
+  }
+  if (cambioInicio && inicio) await recalcularPagosCohorte(id, inicio);
+  if (cambioInicio || fin !== viejoFin || d !== c.dias) await calendario.marcarPendientes([id]);
+  return { ok: true };
+}
+
+// Recalcula las fechas de los pagos que aún no se pagan (pendiente/vencido)
+// de todos los alumnos del grupo, desde su nueva fecha de inicio — mismas
+// semanas que al darlos de alta (SEMANAS_PAGO). Los pagados no se tocan.
+async function recalcularPagosCohorte(cohorteId, fechaInicio) {
+  const { rows } = await query(
+    `UPDATE pagos p SET
+       fecha_vencimiento = $2::date + ($3::int[])[p.numero_pago] * 7,
+       estado = CASE WHEN $2::date + ($3::int[])[p.numero_pago] * 7 < CURRENT_DATE THEN 'vencido' ELSE 'pendiente' END
+     FROM alumnos a
+     WHERE p.alumno_id = a.id AND a.cohorte_id = $1 AND p.estado IN ('pendiente', 'vencido')
+     RETURNING p.alumno_id`, [cohorteId, fechaInicio, SEMANAS_PAGO]);
+  for (const alumnoId of new Set(rows.map(r => r.alumno_id))) {
+    await registrarMensajeAlumno(alumnoId, {
+      tipo: 'sistema', canal: 'sistema', estado: 'nota',
+      contenido: `La fecha de inicio del grupo cambió al ${fechaInicio}: se recalcularon las fechas de sus pagos pendientes.`,
+    });
+  }
+  return rows.length;
+}
+
 // Baja de un alumno que dejó el curso: libera su lugar en el cupo, cancela
 // sus pagos pendientes/vencidos (ya no se cobran ni cuentan como adeudo) y
 // lo marca con fecha_baja. No se borra nada: su historial y los pagos que sí
@@ -686,4 +756,5 @@ module.exports = {
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
   subirCertificado, enviarCertificado, darDeBaja, generarClabe, procesarTransferencia,
+  crearCohorte, actualizarCohorte, recalcularPagosCohorte,
 };

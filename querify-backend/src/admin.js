@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const { config, query } = require('./db');
 const engine = require('./engine');
 const certificados = require('./certificados');
+const calendario = require('./calendario');
 const providers = require('./providers');
 
 const router = express.Router();
@@ -30,6 +31,7 @@ const fmtDia = d => d ? new Date(d).toLocaleDateString('es-MX', { day: 'numeric'
 const ICO = {
   alumnos: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   cohortes: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  recordatorios: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   errores: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   pagos: '<rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/>',
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
@@ -86,6 +88,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
     { id: 'alumnos', href: '/admin/alumnos', label: 'Grupos', ico: 'alumnos' },
     { id: 'pagos', href: '/admin/pagos', label: 'Pagos', ico: 'pagos' },
     { id: 'cohortes', href: '/admin/cohortes', label: 'Cohortes', ico: 'cohortes' },
+    { id: 'recordatorios', href: '/admin/recordatorios', label: 'Recordatorios', ico: 'recordatorios' },
     { id: 'errores', href: '/admin/errores', label: 'Errores', ico: 'errores' },
   ];
 
@@ -221,7 +224,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .filters{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px}
   .field{margin:0 0 14px}
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 6px}
-  select,input[type=date],input[type=text],input[type=password],input[type=email],input[type=tel],textarea{
+  select,input[type=date],input[type=text],input[type=number],input[type=password],input[type=email],input[type=tel],textarea{
     background:var(--surface);color:var(--text);border:1.5px solid var(--line-2);border-radius:var(--r-sm);
     padding:11px 13px;font-size:14.5px;font-family:inherit;width:100%;max-width:100%;box-sizing:border-box}
   /* input[type=date] en Safari/iOS puede insistir en un ancho mínimo propio y
@@ -517,32 +520,58 @@ router.get('/errores', requireAuth, async (req, res) => {
 // de alta nuevas generaciones cuando una cohorte se llena o termina.
 const label = m => m === 'entre_semana' ? 'Entre semana' : 'Sabatino';
 
-router.get('/cohortes', requireAuth, async (req, res) => {
-  const { rows } = await query(`SELECT * FROM cohortes ORDER BY curso, fecha_inicio NULLS LAST, modalidad`);
-  const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python'];
+// Aviso de cómo va el calendario de Outlook (Cohortes y Recordatorios).
+async function avisoCalendario() {
+  const e = await calendario.estado();
+  if (!e.buzones.length) return `<p class="pill" style="margin:0 0 14px">📅 Calendario de Outlook sin configurar (falta <code>CALENDARIO_BUZONES</code>).</p>`;
+  const quien = e.simulado ? 'modo simulación' : e.buzones.map(b => esc(b.split('@')[0].replace(/_/g, ' '))).join(' y ');
+  if (e.ultimoError && e.pendientes) return `<p class="pill bad" style="margin:0 0 14px">⚠ No se pudo actualizar Outlook (${esc(e.ultimoError.mensaje)}). Se reintenta cada hora.</p>`;
+  if (e.pendientes) return `<p class="pill" style="margin:0 0 14px">📅 Actualizando ${e.pendientes} grupo(s) en Outlook (${quien})…</p>`;
+  return `<p class="pill ok" style="margin:0 0 14px">📅 Recordatorios al día en Outlook (${quien}).</p>`;
+}
 
-  const tarjetas = rows.map(r => `
+router.get('/cohortes', requireAuth, async (req, res) => {
+  const { rows } = await query(`SELECT * FROM cohortes ORDER BY curso, fecha_inicio NULLS LAST, modalidad, dias`);
+  const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python'];
+  const iso = d => calendario.ymd(d) || '';
+
+  const tarjetas = rows.map(r => {
+    const codigo = calendario.codigoGrupo(r);
+    return `
     <div class="card" style="margin-bottom:10px">
       <div class="li-top" style="margin-bottom:12px">
-        <div class="li-title">${esc(r.curso)} <span class="pill" style="margin:0">· ${label(r.modalidad)}</span></div>
+        <div class="li-title">${codigo ? esc(codigo) : `${esc(r.curso)} <span class="pill" style="margin:0">· ${label(r.modalidad)}</span>`}
+          ${codigo ? `<div class="li-meta">${esc(r.curso)} · ${label(r.modalidad)}</div>` : ''}</div>
         <span class="tag ${r.lugares_ocupados >= r.cupo_maximo ? 'bad' : 'ok'}">${r.lugares_ocupados} / ${r.cupo_maximo} ocupados</span>
       </div>
       <div class="grid2">
-        <div class="field" style="margin-bottom:0"><label>Fecha de inicio</label>
-          <input type="date" name="fecha_${r.id}" value="${r.fecha_inicio ? new Date(r.fecha_inicio).toISOString().slice(0, 10) : ''}"></div>
+        <div class="field" style="margin-bottom:10px"><label>Fecha de inicio</label>
+          <input type="date" name="fecha_${r.id}" value="${iso(r.fecha_inicio)}"></div>
+        <div class="field" style="margin-bottom:10px"><label>Último día</label>
+          <input type="date" name="fin_${r.id}" value="${iso(r.fecha_fin)}"></div>
+        <div class="field" style="margin-bottom:0"><label>Días</label>
+          ${r.modalidad === 'sabatino'
+            ? `<input type="text" value="SAB" disabled>`
+            : `<select name="dias_${r.id}">${['LM', 'MJ'].map(d => `<option value="${d}"${(r.dias || calendario.diasPorDefecto(r.curso, r.modalidad)) === d ? ' selected' : ''}>${d}</option>`).join('')}</select>`}</div>
         <div class="field" style="margin-bottom:0"><label>Cupo máximo</label>
           <input type="text" inputmode="numeric" name="cupo_${r.id}" value="${r.cupo_maximo}"></div>
       </div>
       <a href="/admin/grupo/${r.id}" style="display:inline-block;margin-top:12px;font-size:13px;font-weight:600">Ver alumnos de este grupo →</a>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+
+  const aviso = req.query.error ? `<p class="pill bad" style="margin-top:10px;text-align:center">✗ ${esc(req.query.error)}</p>`
+    : req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado</p>' : '';
 
   res.send(layout('Cohortes', `
     <h1>Cohortes</h1>
+    <p class="sub">Si cambias la fecha de inicio, el último día se recorre igual, los pagos pendientes de sus alumnos se recalculan y sus recordatorios se mueven en Outlook. El último día se calcula solo a 10 semanas; cámbialo si hay días festivos.</p>
+    ${await avisoCalendario()}
     <form method="post" action="/admin/cohortes">
       ${tarjetas}
       <div style="margin:4px 0 24px">
         <button class="btn block" type="submit">Guardar cambios</button>
-        ${req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado</p>' : ''}
+        ${aviso}
       </div>
     </form>
     ${fabModal({
@@ -552,38 +581,154 @@ router.get('/cohortes', requireAuth, async (req, res) => {
           <div class="field"><label>Curso</label>
             <select name="curso">${cursos.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div>
           <div class="field"><label>Modalidad</label>
-            <select name="modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select></div>
+            <select name="modalidad" id="nc-modalidad"><option value="entre_semana">Entre semana</option><option value="sabatino">Sabatino</option></select></div>
+          <div class="field" id="nc-dias"><label>Días</label>
+            <select name="dias"><option value="">Los de siempre del curso</option><option value="LM">LM</option><option value="MJ">MJ</option></select></div>
           <div class="field"><label>Fecha de inicio</label><input type="date" name="fecha_inicio" required></div>
+          <div class="field"><label>Último día <span style="font-weight:400;color:var(--muted)">(opcional, por defecto 10 semanas)</span></label><input type="date" name="fecha_fin"></div>
           <div class="field"><label>Cupo</label><input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10"></div>
           <button class="btn block" type="submit">Agregar cohorte</button>
-        </form>`,
+        </form>
+        <script>
+          (function () {
+            var m = document.getElementById('nc-modalidad'), d = document.getElementById('nc-dias');
+            m.addEventListener('change', function () { d.style.display = m.value === 'sabatino' ? 'none' : ''; });
+          })();
+        </script>`,
     })}`, { section: 'cohortes' }));
 });
 
 router.post('/cohortes', requireAuth, async (req, res) => {
-  const body = req.body || {};
-  for (const [key, val] of Object.entries(body)) {
-    const mFecha = key.match(/^fecha_(\d+)$/);
-    if (mFecha) { await query(`UPDATE cohortes SET fecha_inicio = $2 WHERE id = $1`, [mFecha[1], val || null]); continue; }
-    const mCupo = key.match(/^cupo_(\d+)$/);
-    if (mCupo) {
-      const cupo = parseInt(val, 10);
-      if (Number.isFinite(cupo) && cupo > 0) await query(`UPDATE cohortes SET cupo_maximo = $2 WHERE id = $1`, [mCupo[1], cupo]);
-    }
+  // Junta los campos por grupo (fecha_7, fin_7, dias_7, cupo_7 → grupo 7).
+  const grupos = {};
+  for (const [key, val] of Object.entries(req.body || {})) {
+    const m = key.match(/^(fecha|fin|dias|cupo)_(\d+)$/);
+    if (m) (grupos[m[2]] ||= {})[m[1]] = String(val).trim();
   }
-  res.redirect('/admin/cohortes?ok=1');
+  const errores = [];
+  for (const [id, g] of Object.entries(grupos)) {
+    const r = await engine.actualizarCohorte(Number(id), {
+      fechaInicio: g.fecha, fechaFin: g.fin, dias: g.dias,
+      cupo: g.cupo !== undefined ? parseInt(g.cupo, 10) : undefined,
+    });
+    if (!r.ok) errores.push(r.error);
+  }
+  res.redirect(errores.length ? `/admin/cohortes?error=${encodeURIComponent(errores.join(' '))}` : '/admin/cohortes?ok=1');
 });
 
 router.post('/cohortes/nueva', requireAuth, async (req, res) => {
-  const { curso, modalidad, fecha_inicio, cupo_maximo } = req.body || {};
-  const cupo = parseInt(cupo_maximo, 10) || 10;
-  if (curso && modalidad && fecha_inicio) {
-    await query(
-      `INSERT INTO cohortes (curso, modalidad, fecha_inicio, cupo_maximo) VALUES ($1,$2,$3,$4)
-       ON CONFLICT (curso, modalidad, fecha_inicio) DO NOTHING`,
-      [curso, modalidad, fecha_inicio, cupo]);
+  const { curso, modalidad, dias, fecha_inicio, fecha_fin, cupo_maximo } = req.body || {};
+  if (!curso || !modalidad || !fecha_inicio) return res.redirect('/admin/cohortes');
+  const r = await engine.crearCohorte({
+    curso, modalidad, dias, fechaInicio: fecha_inicio, fechaFin: fecha_fin || null,
+    cupo: parseInt(cupo_maximo, 10) || 10,
+  });
+  res.redirect(r.ok ? '/admin/cohortes?ok=1' : `/admin/cohortes?error=${encodeURIComponent(r.error)}`);
+});
+
+/* ------------------------------ recordatorios ------------------------------
+   Una sola lista para todos los grupos (ver calendario.js). Los días se
+   cuentan desde el inicio del curso (negativos = antes) o desde el último
+   día. Guardar vuelve a sincronizar todos los grupos en Outlook. */
+const cuandoTexto = r => {
+  const ref = r.ancla === 'fin' ? 'último día' : 'inicio';
+  if (r.dia_hasta != null && r.dia_hasta !== r.dia_desde) return `Del día ${r.dia_desde} al ${r.dia_hasta}, contando desde el ${ref}`;
+  const n = r.dia_desde;
+  if (n === 0) return `El mismo día del ${ref}`;
+  return `${Math.abs(n)} día${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'antes' : 'después'} del ${ref}`;
+};
+
+router.get('/recordatorios', requireAuth, async (req, res) => {
+  const recs = (await query(`SELECT * FROM recordatorios ORDER BY (ancla = 'fin'), dia_desde, orden, id`)).rows;
+  // Ejemplo con el próximo grupo, para ver en qué fechas caería cada uno.
+  const ejemplo = (await query(
+    `SELECT * FROM cohortes WHERE fecha_inicio >= CURRENT_DATE ORDER BY fecha_inicio, id LIMIT 1`)).rows[0];
+  const fmtCorto = f => new Date(`${f}T12:00:00Z`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const fechasEj = r => {
+    if (!ejemplo) return '';
+    const [a, b] = calendario.fechasDe(ejemplo, r);
+    return `<div class="li-meta" style="margin-top:6px">En ${esc(calendario.codigoGrupo(ejemplo))}: ${fmtCorto(a)}${b ? ` – ${fmtCorto(b)}` : ''}</div>`;
+  };
+  const selAncla = (name, val) => `<select name="${name}">
+      <option value="inicio"${val !== 'fin' ? ' selected' : ''}>Inicio del curso</option>
+      <option value="fin"${val === 'fin' ? ' selected' : ''}>Último día del curso</option></select>`;
+
+  const tarjetas = recs.map(r => `
+    <div class="card" style="margin-bottom:10px">
+      <div class="field" style="margin-bottom:10px"><label>Recordatorio</label>
+        <input type="text" name="titulo_${r.id}" value="${esc(r.titulo)}" required></div>
+      <div class="grid2">
+        <div class="field" style="margin-bottom:10px"><label>Contar desde</label>${selAncla(`ancla_${r.id}`, r.ancla)}</div>
+        <div class="field" style="margin-bottom:10px"><label>Día</label>
+          <input type="number" name="desde_${r.id}" value="${r.dia_desde}" required></div>
+        <div class="field" style="margin-bottom:10px"><label>Hasta el día <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+          <input type="number" name="hasta_${r.id}" value="${r.dia_hasta ?? ''}"></div>
+      </div>
+      <div class="field" style="margin-bottom:6px"><label>Notas <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+        <textarea name="notas_${r.id}" rows="2">${esc(r.notas || '')}</textarea></div>
+      <div class="li-meta">${esc(cuandoTexto(r))}</div>
+      ${fechasEj(r)}
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px;color:var(--bad-ink)">
+        <input type="checkbox" name="borrar_${r.id}"> Quitar este recordatorio</label>
+    </div>`).join('');
+
+  const aviso = req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado. Los calendarios se están actualizando.</p>' : '';
+  res.send(layout('Recordatorios', `
+    <h1>Recordatorios</h1>
+    <p class="sub">Los mismos para todos los grupos. Se crean en Outlook con el nombre del grupo (ej. EXCEL-SAB-1026), a las ${esc(config.calendario.hora)}. El día 0 es el inicio del curso (o el último día); los negativos son días antes. Con "Hasta el día" se vuelve un evento de varios días, con aviso a las ${esc(config.calendario.hora)} del día anterior.</p>
+    ${await avisoCalendario()}
+    <form method="post" action="/admin/recordatorios">
+      ${tarjetas || '<div class="empty">Sin recordatorios.</div>'}
+      <div style="margin:4px 0 24px">
+        <button class="btn block" type="submit">Guardar cambios</button>
+        ${aviso}
+      </div>
+    </form>
+    ${fabModal({
+      id: 'nuevoRecordatorio', label: 'Nuevo recordatorio', titulo: 'Nuevo recordatorio',
+      contenido: `
+        <form method="post" action="/admin/recordatorios/nuevo">
+          <div class="field"><label>Recordatorio</label><input type="text" name="titulo" required></div>
+          <div class="field"><label>Contar desde</label>${selAncla('ancla', 'inicio')}</div>
+          <div class="grid2">
+            <div class="field"><label>Día</label><input type="number" name="desde" value="0" required></div>
+            <div class="field"><label>Hasta el día <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><input type="number" name="hasta"></div>
+          </div>
+          <div class="field"><label>Notas <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><textarea name="notas" rows="2"></textarea></div>
+          <button class="btn block" type="submit">Agregar recordatorio</button>
+        </form>`,
+    })}`, { section: 'recordatorios' }));
+});
+
+const entero = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+
+router.post('/recordatorios', requireAuth, async (req, res) => {
+  const recs = {};
+  for (const [key, val] of Object.entries(req.body || {})) {
+    const m = key.match(/^(titulo|ancla|desde|hasta|notas|borrar)_(\d+)$/);
+    if (m) (recs[m[2]] ||= {})[m[1]] = String(val).trim();
   }
-  res.redirect('/admin/cohortes?ok=1');
+  for (const [id, r] of Object.entries(recs)) {
+    if (r.borrar) { await query(`DELETE FROM recordatorios WHERE id = $1`, [id]); continue; }
+    const desde = entero(r.desde);
+    if (!r.titulo || desde === null) continue;
+    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6 WHERE id = $1`,
+      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null]);
+  }
+  await calendario.marcarPendientes();
+  res.redirect('/admin/recordatorios?ok=1');
+});
+
+router.post('/recordatorios/nuevo', requireAuth, async (req, res) => {
+  const { titulo, ancla, desde, hasta, notas } = req.body || {};
+  if (titulo && entero(desde) !== null) {
+    await query(
+      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, orden)
+       VALUES ($1,$2,$3,$4,$5,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
+      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null]);
+    await calendario.marcarPendientes();
+  }
+  res.redirect('/admin/recordatorios?ok=1');
 });
 
 /* ------------------------------ alumnos y pagos ------------------------------
@@ -592,7 +737,7 @@ router.post('/cohortes/nueva', requireAuth, async (req, res) => {
    /admin/grupo/:id con sus alumnos. */
 router.get('/alumnos', requireAuth, async (req, res) => {
   const { rows } = await query(`
-    SELECT c.id, c.curso, c.modalidad, c.fecha_inicio,
+    SELECT c.id, c.curso, c.modalidad, c.dias, c.fecha_inicio,
            COUNT(DISTINCT a.id) FILTER (WHERE a.fecha_baja IS NULL) AS total,
            COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos
     FROM cohortes c
@@ -604,8 +749,8 @@ router.get('/alumnos', requireAuth, async (req, res) => {
   const lista = rows.length ? `<div class="list">${rows.map(g => `
     <a class="list-item" href="/admin/grupo/${g.id}">
       <div class="li-top">
-        <div><div class="li-title">${esc(g.curso)} <span class="pill" style="margin:0">· ${label(g.modalidad)}</span></div>
-          <div class="li-meta">inicia ${fmtDia(g.fecha_inicio)}</div>
+        <div><div class="li-title">${esc(calendario.codigoGrupo(g) || g.curso)}</div>
+          <div class="li-meta">${esc(g.curso)} · ${label(g.modalidad)} · inicia ${fmtDia(g.fecha_inicio)}</div>
         </div>
         <div class="li-right">
           <span class="tag">${g.total} alumno${g.total == 1 ? '' : 's'}</span>
@@ -648,9 +793,10 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
   // podía dar de alta igual y los pagos quedaban con vencimiento en 1970.
   const sinFecha = !cohorte.fecha_inicio;
 
-  res.send(layout(`${cohorte.curso} · ${label(cohorte.modalidad)}`, `
-    <h1>${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span></h1>
-    <p class="sub">Inicia ${fmtDia(cohorte.fecha_inicio)} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
+  const codigo = calendario.codigoGrupo(cohorte);
+  res.send(layout(codigo || `${cohorte.curso} · ${label(cohorte.modalidad)}`, `
+    <h1>${codigo ? esc(codigo) : `${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span>`}</h1>
+    <p class="sub">${codigo ? `${esc(cohorte.curso)} · ${label(cohorte.modalidad)} · ` : ''}Inicia ${fmtDia(cohorte.fecha_inicio)}${cohorte.fecha_fin ? ` · termina ${fmtDia(cohorte.fecha_fin)}` : ''} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
     ${sinFecha ? '<p class="pill bad">Sin fecha de inicio: asígnala en Cohortes para dar de alta alumnos.</p>' : ''}
     ${lista}
     ${sinCupo || sinFecha ? '' : fabModal({

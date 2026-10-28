@@ -1,5 +1,6 @@
 // src/providers.js — integraciones externas (WhatsApp, correo, Graph)
 // Todas degradan a "simulación" si faltan credenciales, para poder probar el flujo completo.
+const crypto = require('crypto');
 const { config } = require('./db');
 const tpl = require('./templates');
 
@@ -163,6 +164,50 @@ async function syncProspecto(p) {
   } catch (err) {
     console.warn(`[sync SharePoint] error (no bloquea): ${err.message}`);
   }
+}
+
+/* ------------------------ Calendario de Outlook (Graph) ------------------------ */
+// Eventos de recordatorio de cada grupo (ver calendario.js), en el calendario
+// principal de cada buzón de CALENDARIO_BUZONES. Requiere el permiso de
+// aplicación Calendars.ReadWrite (con consentimiento de administrador).
+// Simulado: no llama a Graph y regresa un id falso, así el resto del flujo
+// (guardar, mover, borrar) se puede probar en local.
+async function graphCalendario(method, ruta, body) {
+  const token = await getGraphToken();
+  for (let intento = 0; intento < 3; intento++) {
+    const res = await fetch(`https://graph.microsoft.com/v1.0${ruta}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    // Graph limita la velocidad por buzón: espera lo que pide y reintenta.
+    if (res.status === 429 && intento < 2) {
+      await new Promise(r => setTimeout(r, (Number(res.headers.get('retry-after')) || 5) * 1000));
+      continue;
+    }
+    const data = res.status === 204 ? null : await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, data, error: res.ok ? null : (data?.error?.message || `HTTP ${res.status}`) };
+  }
+}
+
+async function crearEventoCalendario(buzon, evento) {
+  if (config.simulate.calendario) return { ok: true, id: `simulado-${crypto.randomUUID()}` };
+  const r = await graphCalendario('POST', `/users/${encodeURIComponent(buzon)}/events`, evento);
+  return r.ok ? { ok: true, id: r.data.id } : { ok: false, status: r.status, error: r.error };
+}
+
+// `noExiste`: lo borraron a mano en Outlook (o era un id simulado) — quien
+// llama lo vuelve a crear.
+async function actualizarEventoCalendario(buzon, id, evento) {
+  if (config.simulate.calendario) return { ok: true };
+  const r = await graphCalendario('PATCH', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`, evento);
+  return r.ok ? { ok: true } : { ok: false, status: r.status, noExiste: r.status === 404 || r.status === 400, error: r.error };
+}
+
+async function borrarEventoCalendario(buzon, id) {
+  if (config.simulate.calendario) return { ok: true };
+  const r = await graphCalendario('DELETE', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`);
+  return r.ok || r.status === 404 || r.status === 400 ? { ok: true } : { ok: false, status: r.status, error: r.error };
 }
 
 /* --------------------------------- Stripe -------------------------------------- */
@@ -343,4 +388,5 @@ module.exports = {
   sendWhatsAppTemplate, sendWhatsAppTexto, sendEmail, syncProspecto, crearCheckoutSession, verificarEventoStripe,
   crearClabe, clienteStripe, datosTransferencia, estadoCheckout, transferenciasAbiertas, cancelarTransferenciasAbiertas,
   saldoTransferencias, cobrarDeSaldo, stripeEnPrueba, simularTransferencia,
+  crearEventoCalendario, actualizarEventoCalendario, borrarEventoCalendario,
 };
