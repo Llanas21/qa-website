@@ -526,7 +526,7 @@ async function avisoCalendario() {
   if (!e.buzones.length) return `<p class="pill" style="margin:0 0 14px">📅 Calendario de Outlook sin configurar (falta <code>CALENDARIO_BUZONES</code>).</p>`;
   const quien = e.simulado ? 'modo simulación' : e.buzones.map(b => esc(b.split('@')[0].replace(/_/g, ' '))).join(' y ');
   if (e.ultimoError && e.pendientes) return `<p class="pill bad" style="margin:0 0 14px">⚠ No se pudo actualizar Outlook (${esc(e.ultimoError.mensaje)}). Se reintenta cada hora.</p>`;
-  if (e.pendientes) return `<p class="pill" style="margin:0 0 14px">📅 Actualizando ${e.pendientes} grupo(s) en Outlook (${quien})…</p>`;
+  if (e.pendientes) return `<p class="pill" style="margin:0 0 14px">📅 Actualizando los calendarios de Outlook (${quien})…</p>`;
   return `<p class="pill ok" style="margin:0 0 14px">📅 Recordatorios al día en Outlook (${quien}).</p>`;
 }
 
@@ -649,6 +649,9 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
     const [a, b] = calendario.fechasDe(ejemplo, r);
     return `<div class="li-meta" style="margin-top:6px">En ${esc(calendario.codigoGrupo(ejemplo))}: ${fmtCorto(a)}${b ? ` – ${fmtCorto(b)}` : ''}</div>`;
   };
+  const selAlcance = (name, val) => `<select name="${name}">
+      <option value="grupo"${val !== 'general' ? ' selected' : ''}>Cada grupo (uno por grupo)</option>
+      <option value="general"${val === 'general' ? ' selected' : ''}>General (uno solo si coinciden)</option></select>`;
   const selAncla = (name, val) => `<select name="${name}">
       <option value="inicio"${val !== 'fin' ? ' selected' : ''}>Inicio del curso</option>
       <option value="fin"${val === 'fin' ? ' selected' : ''}>Último día del curso</option></select>`;
@@ -657,6 +660,7 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
     <div class="card" style="margin-bottom:10px">
       <div class="field" style="margin-bottom:10px"><label>Recordatorio</label>
         <input type="text" name="titulo_${r.id}" value="${esc(r.titulo)}" required></div>
+      <div class="field" style="margin-bottom:10px"><label>Aplica a</label>${selAlcance(`alcance_${r.id}`, r.alcance)}</div>
       <div class="grid2">
         <div class="field" style="margin-bottom:10px"><label>Contar desde</label>${selAncla(`ancla_${r.id}`, r.ancla)}</div>
         <div class="field" style="margin-bottom:10px"><label>Día</label>
@@ -675,7 +679,7 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
   const aviso = req.query.ok ? '<p class="pill ok" style="margin-top:10px;text-align:center">✓ Guardado. Los calendarios se están actualizando.</p>' : '';
   res.send(layout('Recordatorios', `
     <h1>Recordatorios</h1>
-    <p class="sub">Los mismos para todos los grupos. Se crean en Outlook con el nombre del grupo (ej. EXCEL-SAB-1026), a las ${esc(config.calendario.hora)}. El día 0 es el inicio del curso (o el último día); los negativos son días antes. Con "Hasta el día" se vuelve un evento de varios días, con aviso a las ${esc(config.calendario.hora)} del día anterior.</p>
+    <p class="sub">Los mismos para todos los grupos. Se crean en Outlook con el nombre del grupo (ej. EXCEL-SAB-1026), a las ${esc(config.calendario.hora)}. Los "generales" salen una sola vez cuando varios grupos caen en la misma fecha ("Grupos del 31 oct · …"). El día 0 es el inicio del curso (o el último día); los negativos son días antes. Con "Hasta el día" se vuelve un evento de varios días, con aviso a las ${esc(config.calendario.hora)} del día anterior.</p>
     ${await avisoCalendario()}
     <form method="post" action="/admin/recordatorios">
       ${tarjetas || '<div class="empty">Sin recordatorios.</div>'}
@@ -689,6 +693,7 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
       contenido: `
         <form method="post" action="/admin/recordatorios/nuevo">
           <div class="field"><label>Recordatorio</label><input type="text" name="titulo" required></div>
+          <div class="field"><label>Aplica a</label>${selAlcance('alcance', 'grupo')}</div>
           <div class="field"><label>Contar desde</label>${selAncla('ancla', 'inicio')}</div>
           <div class="grid2">
             <div class="field"><label>Día</label><input type="number" name="desde" value="0" required></div>
@@ -705,27 +710,27 @@ const entero = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n :
 router.post('/recordatorios', requireAuth, async (req, res) => {
   const recs = {};
   for (const [key, val] of Object.entries(req.body || {})) {
-    const m = key.match(/^(titulo|ancla|desde|hasta|notas|borrar)_(\d+)$/);
+    const m = key.match(/^(titulo|alcance|ancla|desde|hasta|notas|borrar)_(\d+)$/);
     if (m) (recs[m[2]] ||= {})[m[1]] = String(val).trim();
   }
   for (const [id, r] of Object.entries(recs)) {
     if (r.borrar) { await query(`DELETE FROM recordatorios WHERE id = $1`, [id]); continue; }
     const desde = entero(r.desde);
     if (!r.titulo || desde === null) continue;
-    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6 WHERE id = $1`,
-      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null]);
+    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6, alcance = $7 WHERE id = $1`,
+      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null, r.alcance === 'general' ? 'general' : 'grupo']);
   }
   await calendario.marcarPendientes();
   res.redirect('/admin/recordatorios?ok=1');
 });
 
 router.post('/recordatorios/nuevo', requireAuth, async (req, res) => {
-  const { titulo, ancla, desde, hasta, notas } = req.body || {};
+  const { titulo, alcance, ancla, desde, hasta, notas } = req.body || {};
   if (titulo && entero(desde) !== null) {
     await query(
-      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, orden)
-       VALUES ($1,$2,$3,$4,$5,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
-      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null]);
+      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, orden)
+       VALUES ($1,$2,$3,$4,$5,$6,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
+      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null, alcance === 'general' ? 'general' : 'grupo']);
     await calendario.marcarPendientes();
   }
   res.redirect('/admin/recordatorios?ok=1');

@@ -192,6 +192,30 @@ SELECT * FROM (VALUES
 ) AS v(orden, ancla, dia_desde, dia_hasta, titulo, notas)
 WHERE NOT EXISTS (SELECT 1 FROM recordatorios);
 
+-- Alcance (29 oct 2026): 'grupo' = un evento por grupo; 'general' = un solo
+-- evento cuando varios grupos coinciden en fecha (las tareas de promoción no
+-- se hacen 4 veces aunque arranquen 4 grupos el mismo día). La primera vez se
+-- clasifica la lista inicial: la planeación de 28 días (orden 1-10) general,
+-- el resto por grupo; y se marcan los grupos para quitar sus eventos repetidos.
+ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS alcance TEXT;
+WITH m AS (
+  UPDATE recordatorios SET alcance = CASE WHEN orden <= 10 THEN 'general' ELSE 'grupo' END
+  WHERE alcance IS NULL RETURNING 1
+)
+UPDATE cohortes SET calendario_pendiente = true WHERE EXISTS (SELECT 1 FROM m) AND fecha_inicio IS NOT NULL;
+
+-- Eventos de los recordatorios generales: uno por recordatorio × fecha ×
+-- buzón, compartido por todos los grupos que caen en esa fecha.
+CREATE TABLE IF NOT EXISTS eventos_generales (
+  id               SERIAL PRIMARY KEY,
+  recordatorio_id  INT  NOT NULL,
+  desde            DATE NOT NULL,
+  buzon            TEXT NOT NULL,
+  event_id         TEXT NOT NULL,
+  firma            TEXT,
+  UNIQUE (recordatorio_id, desde, buzon)
+);
+
 -- Evento de Outlook creado por grupo × recordatorio × buzón, para poder
 -- moverlo o borrarlo después. `firma` = hash del contenido enviado: si no
 -- cambió, no se vuelve a mandar. Sin FK a recordatorios a propósito: al

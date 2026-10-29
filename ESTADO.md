@@ -53,6 +53,11 @@ tiempo. Decisiones tomadas en esa conversación:
     pasado** (pedido del usuario: si registra un grupo tarde, ve qué ya
     debía estar hecho). Aviso a las 10:00; los de varios días son una barra
     de todo el día con aviso a las 10:00 del día anterior (opción elegida).
+  - **Generales vs. por grupo (29 oct):** con 4 sabatinos iniciando el
+    mismo día salía cada aviso 4 veces. Cada recordatorio ahora tiene
+    "Aplica a": *cada grupo* o *general* (un solo evento "Grupos del 31 oct
+    · …" si coinciden). La planeación de 28 días quedó general; contactar
+    alumnos, Teams, SharePoint, examen, evaluación y certificados, por grupo.
   - Cohortes ahora tiene **Días** (LM/MJ entre semana, SAB sabatino — un
     curso puede cambiar de días, y puede haber dos grupos entre semana del
     mismo curso y fecha) y **Último día** (10 semanas por default, editable

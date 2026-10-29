@@ -75,25 +75,13 @@ function fechasDe(c, rec) {
 // ese momento. De varios días: evento de todo el día que cruza el rango
 // (opción elegida por el usuario), con aviso a la misma hora del día
 // anterior — Outlook cuenta el aviso desde la medianoche del primer día.
-function eventoPara(c, rec) {
-  const [desde, hasta] = fechasDe(c, rec);
-  const codigo = codigoGrupo(c);
+function construirEvento({ subject, cuerpo, desde, hasta }) {
   const [h, m] = config.calendario.hora.split(':').map(Number);
   const zona = config.calendario.zona;
   const hhmm = min => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00`;
   const inicioMin = h * 60 + (m || 0);
-
-  const enlace = `${config.publicBaseUrl || `http://localhost:${config.port}`}/admin/grupo/${c.id}`;
-  const cuerpo = [
-    rec.notas ? `<p>${esc(rec.notas)}</p>` : '',
-    `<p><b>Grupo:</b> ${esc(codigo)} — ${esc(c.curso)} (${c.modalidad === 'sabatino' ? 'sabatino' : 'entre semana'})<br>`,
-    `<b>Primera clase:</b> ${esc(fmtLargo(c.fecha_inicio))}<br>`,
-    `<b>Última clase:</b> ${esc(fmtLargo(c.fecha_fin || fechaFinPorDefecto(c.fecha_inicio, c.dias)))}</p>`,
-    `<p><a href="${esc(enlace)}">Ver el grupo y sus alumnos en el panel</a></p>`,
-  ].join('');
-
   const comun = {
-    subject: `${codigo} · ${rec.titulo}`,
+    subject,
     body: { contentType: 'HTML', content: cuerpo },
     showAs: 'free', isReminderOn: true,
   };
@@ -105,6 +93,40 @@ function eventoPara(c, rec) {
   return { ...comun, isAllDay: true, reminderMinutesBeforeStart: 24 * 60 - inicioMin,
     start: { dateTime: `${desde}T00:00:00`, timeZone: zona },
     end: { dateTime: `${sumarDias(hasta, 1)}T00:00:00`, timeZone: zona } };
+}
+
+const enlaceGrupo = c => `${config.publicBaseUrl || `http://localhost:${config.port}`}/admin/grupo/${c.id}`;
+const finDe = c => c.fecha_fin || fechaFinPorDefecto(c.fecha_inicio, c.dias);
+
+// Recordatorio de un grupo ('grupo'), con el nombre del grupo en el título.
+function eventoPara(c, rec) {
+  const [desde, hasta] = fechasDe(c, rec);
+  const codigo = codigoGrupo(c);
+  const cuerpo = [
+    rec.notas ? `<p>${esc(rec.notas)}</p>` : '',
+    `<p><b>Grupo:</b> ${esc(codigo)} — ${esc(c.curso)} (${c.modalidad === 'sabatino' ? 'sabatino' : 'entre semana'})<br>`,
+    `<b>Primera clase:</b> ${esc(fmtLargo(c.fecha_inicio))}<br>`,
+    `<b>Última clase:</b> ${esc(fmtLargo(finDe(c)))}</p>`,
+    `<p><a href="${esc(enlaceGrupo(c))}">Ver el grupo y sus alumnos en el panel</a></p>`,
+  ].join('');
+  return construirEvento({ subject: `${codigo} · ${rec.titulo}`, cuerpo, desde, hasta });
+}
+
+// Recordatorio general: un solo evento para todos los grupos que caen en la
+// misma fecha. Con un solo grupo se titula igual que uno por grupo; con
+// varios, "Grupos del 31 oct · …" y la lista de grupos en el cuerpo.
+const fmtCorto = f => new Date(`${ymd(f)}T12:00:00Z`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+function eventoGeneral(rec, desde, hasta, grupos) {
+  const ref = rec.ancla === 'fin' ? 'que terminan el' : 'del';
+  const fechaRef = rec.ancla === 'fin' ? finDe(grupos[0]) : grupos[0].fecha_inicio;
+  const prefijo = grupos.length === 1 ? codigoGrupo(grupos[0]) : `Grupos ${ref} ${fmtCorto(fechaRef)}`;
+  const cuerpo = [
+    rec.notas ? `<p>${esc(rec.notas)}</p>` : '',
+    `<p><b>${grupos.length === 1 ? 'Grupo' : 'Grupos'}:</b></p><ul>`,
+    ...grupos.map(c => `<li><a href="${esc(enlaceGrupo(c))}">${esc(codigoGrupo(c))}</a> — ${esc(c.curso)}, del ${esc(fmtLargo(c.fecha_inicio))} al ${esc(fmtLargo(finDe(c)))}</li>`),
+    '</ul>',
+  ].join('');
+  return construirEvento({ subject: `${prefijo} · ${rec.titulo}`, cuerpo, desde, hasta });
 }
 
 const firmaDe = ev => crypto.createHash('sha1').update(JSON.stringify(ev)).digest('hex');
@@ -119,7 +141,7 @@ let ultimoError = null; // { mensaje, fecha } — se muestra en el panel
 async function sincronizarCohorte(cohorteId) {
   const c = (await query(`SELECT * FROM cohortes WHERE id = $1`, [cohorteId])).rows[0];
   if (!c) return;
-  const recs = c.fecha_inicio ? (await query(`SELECT * FROM recordatorios ORDER BY orden, id`)).rows : [];
+  const recs = c.fecha_inicio ? (await query(`SELECT * FROM recordatorios WHERE alcance IS DISTINCT FROM 'general' ORDER BY orden, id`)).rows : [];
   const filas = (await query(`SELECT * FROM cohorte_eventos WHERE cohorte_id = $1`, [cohorteId])).rows;
   const existentes = new Map(filas.map(f => [`${f.recordatorio_id}|${f.buzon}`, f]));
   const cuenta = { creados: 0, actualizados: 0, borrados: 0, errores: 0 };
@@ -174,6 +196,71 @@ async function sincronizarCohorte(cohorteId) {
   return cuenta;
 }
 
+// Recordatorios generales: se recalculan completos desde todos los grupos
+// con fecha (son pocos y solo se manda a Graph lo que cambió). Se agrupan
+// por recordatorio + fechas: grupos que caen el mismo día comparten evento.
+let generalesPendiente = true; // al arrancar siempre se revisan
+async function sincronizarGenerales() {
+  const recs = (await query(`SELECT * FROM recordatorios WHERE alcance = 'general' ORDER BY orden, id`)).rows;
+  const grupos = (await query(`SELECT * FROM cohortes WHERE fecha_inicio IS NOT NULL ORDER BY fecha_inicio, curso, id`)).rows;
+  const filas = (await query(`SELECT * FROM eventos_generales`)).rows;
+  const existentes = new Map(filas.map(f => [`${f.recordatorio_id}|${ymd(f.desde)}|${f.buzon}`, f]));
+  const cuenta = { creados: 0, actualizados: 0, borrados: 0, errores: 0 };
+  const fallo = (r) => {
+    cuenta.errores++; ultimoError = { mensaje: r.error, fecha: new Date() };
+    console.error(`[calendario] generales: ${r.error}`);
+    if (r.status === 401 || r.status === 403) throw Object.assign(new Error(`sin permiso en Outlook: ${r.error}`), { sinPermiso: true });
+  };
+
+  // recordatorio|desde → { rec, desde, hasta, grupos[] }
+  const porFecha = new Map();
+  for (const rec of recs) {
+    for (const c of grupos) {
+      const [desde, hasta] = fechasDe(c, rec);
+      const k = `${rec.id}|${desde}`;
+      if (!porFecha.has(k)) porFecha.set(k, { rec, desde, hasta, grupos: [] });
+      porFecha.get(k).grupos.push(c);
+    }
+  }
+
+  const deseados = new Set();
+  for (const buzon of config.calendario.buzones) {
+    for (const { rec, desde, hasta, grupos: gs } of porFecha.values()) {
+      const clave = `${rec.id}|${desde}|${buzon}`;
+      deseados.add(clave);
+      const ev = eventoGeneral(rec, desde, hasta, gs);
+      const firma = firmaDe(ev);
+      const fila = existentes.get(clave);
+      if (fila && fila.firma === firma) continue;
+      if (fila) {
+        const r = await providers.actualizarEventoCalendario(buzon, fila.event_id, ev);
+        if (r.ok) { await query(`UPDATE eventos_generales SET firma = $2 WHERE id = $1`, [fila.id, firma]); cuenta.actualizados++; continue; }
+        if (!r.noExiste) { fallo(r); continue; }
+      }
+      const r = await providers.crearEventoCalendario(buzon, ev);
+      if (!r.ok) { fallo(r); continue; }
+      await query(
+        `INSERT INTO eventos_generales (recordatorio_id, desde, buzon, event_id, firma) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (recordatorio_id, desde, buzon) DO UPDATE SET event_id = EXCLUDED.event_id, firma = EXCLUDED.firma`,
+        [rec.id, desde, buzon, r.id, firma]);
+      cuenta.creados++;
+    }
+  }
+  for (const f of filas) {
+    if (deseados.has(`${f.recordatorio_id}|${ymd(f.desde)}|${f.buzon}`)) continue;
+    const r = await providers.borrarEventoCalendario(f.buzon, f.event_id);
+    if (!r.ok) { fallo(r); continue; }
+    await query(`DELETE FROM eventos_generales WHERE id = $1`, [f.id]);
+    cuenta.borrados++;
+  }
+
+  generalesPendiente = cuenta.errores > 0;
+  if (cuenta.creados || cuenta.actualizados || cuenta.borrados) {
+    console.info(`[calendario${config.simulate.calendario ? ' SIMULADO' : ''}] generales: ` +
+      `${cuenta.creados} creado(s), ${cuenta.actualizados} movido(s), ${cuenta.borrados} borrado(s)${cuenta.errores ? `, ${cuenta.errores} error(es)` : ''}`);
+  }
+}
+
 // Sin buzones configurados no se hace nada (ni se borra): los grupos se
 // quedan pendientes para cuando se configure CALENDARIO_BUZONES.
 function sincronizarPendientes() {
@@ -182,25 +269,29 @@ function sincronizarPendientes() {
     const { rows } = await query(`SELECT id FROM cohortes WHERE calendario_pendiente ORDER BY fecha_inicio NULLS FIRST, id`);
     try {
       for (const { id } of rows) await sincronizarCohorte(id);
+      if (rows.length || generalesPendiente) await sincronizarGenerales();
     } catch (err) {
       if (!err.sinPermiso) throw err;
+      generalesPendiente = true;
       console.error(`[calendario] ${err.message} — se reintenta en la siguiente hora`);
       return;
     }
-    if (rows.length && !(await contarPendientes())) ultimoError = null;
+    if (!(await contarPendientes())) ultimoError = null;
   });
 }
 
 // Marca grupos para sincronizar y arranca sin esperar (el panel no se
 // queda colgado mientras Graph crea decenas de eventos).
 async function marcarPendientes(ids = null) {
+  generalesPendiente = true;
   if (ids) await query(`UPDATE cohortes SET calendario_pendiente = true WHERE id = ANY($1)`, [ids]);
   else await query(`UPDATE cohortes SET calendario_pendiente = true WHERE fecha_inicio IS NOT NULL OR id IN (SELECT cohorte_id FROM cohorte_eventos)`);
   sincronizarPendientes().catch(e => console.error('[calendario]', e.message));
 }
 
 async function contarPendientes() {
-  return (await query(`SELECT COUNT(*)::int AS n FROM cohortes WHERE calendario_pendiente AND (fecha_inicio IS NOT NULL OR id IN (SELECT cohorte_id FROM cohorte_eventos))`)).rows[0].n;
+  const n = (await query(`SELECT COUNT(*)::int AS n FROM cohortes WHERE calendario_pendiente AND (fecha_inicio IS NOT NULL OR id IN (SELECT cohorte_id FROM cohorte_eventos))`)).rows[0].n;
+  return n + (generalesPendiente ? 1 : 0);
 }
 
 // Para el aviso de estado en el panel.
@@ -214,6 +305,6 @@ async function estado() {
 }
 
 module.exports = {
-  DIAS_VALIDOS, ymd, sumarDias, diasEntre, diasPorDefecto, fechaFinPorDefecto, codigoGrupo, fechasDe, eventoPara,
+  DIAS_VALIDOS, ymd, sumarDias, diasEntre, diasPorDefecto, fechaFinPorDefecto, codigoGrupo, fechasDe, eventoPara, eventoGeneral,
   sincronizarPendientes, marcarPendientes, estado,
 };
