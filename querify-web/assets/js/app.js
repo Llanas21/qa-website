@@ -83,7 +83,10 @@ function initInscripcionForm() {
     cursoSelect.value = cursoInicial;
   }
 
-  const labelModalidad = m => m === "entre_semana" ? "Entre semana" : "Sábado";
+  // Días de clase del grupo (cohortes.dias): puede haber dos grupos entre
+  // semana del mismo curso y fecha, y sin los días se verían iguales.
+  const DIAS_LABEL = { LM: "Lunes y miércoles", MJ: "Martes y jueves", SAB: "Sábados" };
+  const labelModalidad = c => DIAS_LABEL[c.dias] || (c.modalidad === "entre_semana" ? "Entre semana" : "Sábado");
   // timeZone: "UTC" a propósito — el backend manda la fecha como medianoche UTC
   // (viene de una columna DATE sin hora); sin fijar la zona aquí, el navegador la
   // reinterpreta en la zona local del visitante y en México (UTC-6) se corre un día atrás.
@@ -103,7 +106,7 @@ function initInscripcionForm() {
       cohortesBox.innerHTML = cohortes.map((c, i) => `
         <label class="cohorte-opt">
           <input type="radio" name="cohorte" value="${c.id}" ${i === 0 ? "checked" : ""}>
-          <span class="co-main"><b>${labelModalidad(c.modalidad)}</b><span>${fmtFecha(c.fecha_inicio)}</span></span>
+          <span class="co-main"><b>${labelModalidad(c)}</b><span>${fmtFecha(c.fecha_inicio)}</span></span>
           <span class="co-cupo">${c.lugares_disponibles} lugar${c.lugares_disponibles === 1 ? "" : "es"}</span>
         </label>`).join("");
     } catch (err) {

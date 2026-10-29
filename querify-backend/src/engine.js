@@ -228,7 +228,7 @@ const SEMANAS_PAGO = [0, 2, 4, 6, 8];     // semana relativa al inicio de la coh
 // Cohortes de un curso con cupo disponible (para el selector del sitio).
 async function cohortesDisponibles(curso) {
   const { rows } = await query(
-    `SELECT id, curso, modalidad, fecha_inicio, cupo_maximo, lugares_ocupados,
+    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados,
             (cupo_maximo - lugares_ocupados) AS lugares_disponibles
      FROM cohortes
      WHERE curso = $1 AND fecha_inicio IS NOT NULL AND fecha_inicio >= CURRENT_DATE

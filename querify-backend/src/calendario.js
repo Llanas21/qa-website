@@ -214,6 +214,6 @@ async function estado() {
 }
 
 module.exports = {
-  DIAS_VALIDOS, ymd, sumarDias, diasEntre, diasPorDefecto, fechaFinPorDefecto, codigoGrupo, fechasDe,
+  DIAS_VALIDOS, ymd, sumarDias, diasEntre, diasPorDefecto, fechaFinPorDefecto, codigoGrupo, fechasDe, eventoPara,
   sincronizarPendientes, marcarPendientes, estado,
 };
