@@ -67,6 +67,10 @@ tiempo. Decisiones tomadas en esa conversación:
     fecha vieja) y mueve sus eventos del calendario.
   - Requiere el permiso de aplicación **Calendars.ReadWrite** en la app
     "Querify Backend" de Entra y la variable `CALENDARIO_BUZONES` en Railway.
+  - **Pendiente (pausado por el usuario, 29 oct):** poner la lista de alumnos
+    (nombre, WhatsApp, correo) dentro del evento "Contactar a los alumnos" de
+    cada grupo, actualizada al inscribirse/darse de baja. Por ahora el evento
+    solo trae la liga al grupo en el panel, y al usuario le basta.
   - Siguiente etapa posible (idea, no pedida aún): que el sistema cree solo
     el canal de Teams y la carpeta de SharePoint del grupo en vez de
     recordarlo.
