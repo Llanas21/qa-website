@@ -238,6 +238,13 @@ async function crearClabe({ nombre, correo }) {
   }
 }
 
+// Al corregir el nombre o correo de un alumno en el panel: el correo es con
+// lo que clienteStripe() encuentra de nuevo al mismo cliente (y su CLABE).
+async function actualizarClienteStripe(customerId, { nombre, correo }) {
+  if (config.simulate.stripe) return;
+  await getStripe().customers.update(customerId, { name: nombre, email: correo || '' });
+}
+
 // Estado de una sesión de pago, para la página de gracias y el correo de
 // "datos para transferir": si el alumno eligió transferencia, la sesión se
 // completa SIN pagar y su PaymentIntent trae los datos (CLABE, monto, liga
@@ -325,7 +332,7 @@ function verificarEventoStripe(rawBody, firma) {
 
 module.exports = {
   sendWhatsAppTemplate, sendEmail, crearCheckoutSession, verificarEventoStripe,
-  crearClabe, clienteStripe, datosTransferencia, estadoCheckout, transferenciasAbiertas, cancelarTransferenciasAbiertas,
+  crearClabe, clienteStripe, actualizarClienteStripe, datosTransferencia, estadoCheckout, transferenciasAbiertas, cancelarTransferenciasAbiertas,
   saldoTransferencias, cobrarDeSaldo, stripeEnPrueba, simularTransferencia,
   crearEventoCalendario, actualizarEventoCalendario, borrarEventoCalendario,
 };

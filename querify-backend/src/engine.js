@@ -310,6 +310,64 @@ async function darDeBaja(alumnoId) {
   return { ok: true };
 }
 
+// Corrige los datos de un alumno desde su ficha (nombre mal escrito, otro
+// correo, se inscribió al grupo equivocado...). Cambiar de grupo mueve su
+// lugar del cupo viejo al nuevo (si no está dado de baja) y recalcula las
+// fechas de sus pagos sin pagar desde el inicio del grupo nuevo; los pagos
+// hechos se conservan tal cual. El certificado ya enviado no se regenera.
+async function editarAlumno(alumnoId, { nombre, whatsapp, correo, cohorteId }) {
+  const a = (await query(`SELECT * FROM alumnos WHERE id = $1`, [alumnoId])).rows[0];
+  if (!a) return { ok: false, error: 'El alumno no existe.' };
+
+  const cambios = [];
+  if (nombre !== a.nombre) cambios.push(`nombre: "${a.nombre}" → "${nombre}"`);
+  if ((correo || null) !== (a.correo || null)) cambios.push(`correo: ${a.correo || '—'} → ${correo || '—'}`);
+  const telViejo = a.whatsapp ? `${a.whatsapp_pais || ''} ${a.whatsapp}`.trim() : '—';
+  const telNuevo = whatsapp ? `${whatsapp.pais} ${whatsapp.numero}` : '—';
+  if (telViejo !== telNuevo) cambios.push(`WhatsApp: ${telViejo} → ${telNuevo}`);
+
+  let nueva = null;
+  if (cohorteId !== a.cohorte_id) {
+    nueva = await cohortePorId(cohorteId);
+    if (!nueva) return { ok: false, error: 'Ese grupo no existe.' };
+    if (!nueva.fecha_inicio) return { ok: false, error: 'Ese grupo no tiene fecha de inicio.' };
+    if (!a.fecha_baja && nueva.lugares_ocupados >= nueva.cupo_maximo) return { ok: false, error: 'Ese grupo ya no tiene cupo disponible.' };
+    const vieja = await cohortePorId(a.cohorte_id);
+    cambios.push(`grupo: ${calendario.codigoGrupo(vieja) || vieja.curso} → ${calendario.codigoGrupo(nueva) || nueva.curso}`);
+  }
+  if (!cambios.length) return { ok: true, sinCambios: true };
+
+  await query(
+    `UPDATE alumnos SET nombre = $2, correo = $3, whatsapp_pais = $4, whatsapp = $5, cohorte_id = $6 WHERE id = $1`,
+    [alumnoId, nombre, correo || null, whatsapp?.pais || null, whatsapp?.numero || null, cohorteId]);
+
+  if (nueva) {
+    if (!a.fecha_baja) {
+      await query(`UPDATE cohortes SET lugares_ocupados = GREATEST(lugares_ocupados - 1, 0) WHERE id = $1`, [a.cohorte_id]);
+      await query(`UPDATE cohortes SET lugares_ocupados = lugares_ocupados + 1 WHERE id = $1`, [cohorteId]);
+    }
+    await query(
+      `UPDATE pagos SET
+         fecha_vencimiento = $2::date + ($3::int[])[numero_pago] * 7,
+         estado = CASE WHEN $2::date + ($3::int[])[numero_pago] * 7 < CURRENT_DATE THEN 'vencido' ELSE 'pendiente' END
+       WHERE alumno_id = $1 AND estado IN ('pendiente', 'vencido')`,
+      [alumnoId, calendario.ymd(nueva.fecha_inicio), SEMANAS_PAGO]);
+  }
+
+  // Que Stripe lo siga reconociendo (y le siga tocando la misma CLABE) con
+  // el correo nuevo. Si falla no se revierte lo de arriba: queda en el log.
+  if (a.stripe_customer_id && (nombre !== a.nombre || (correo || null) !== (a.correo || null))) {
+    try { await providers.actualizarClienteStripe(a.stripe_customer_id, { nombre, correo }); }
+    catch (err) { console.error(`[editarAlumno] Stripe ${a.stripe_customer_id}: ${err.message}`); }
+  }
+
+  await registrarMensajeAlumno(alumnoId, {
+    tipo: 'sistema', canal: 'sistema', estado: 'nota',
+    contenido: `Datos corregidos desde el panel — ${cambios.join('; ')}.${nueva ? ' Se recalcularon las fechas de sus pagos pendientes.' : ''}`,
+  });
+  return { ok: true };
+}
+
 // Sube (o reemplaza) el PDF del certificado de un alumno y genera un token
 // aleatorio nuevo para la liga pública de descarga (/certificados/:token,
 // ver routes.js) — el token no es el id del alumno a propósito, para que
@@ -589,6 +647,6 @@ module.exports = {
   registrarMensajeAlumno,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer,
-  subirCertificado, enviarCertificado, darDeBaja, generarClabe, procesarTransferencia,
+  subirCertificado, enviarCertificado, darDeBaja, editarAlumno, generarClabe, procesarTransferencia,
   crearCohorte, actualizarCohorte, recalcularPagosCohorte,
 };

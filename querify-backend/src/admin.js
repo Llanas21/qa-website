@@ -47,9 +47,12 @@ const svg = (nombre, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" hei
 // fijo en la pantalla con un formulario siempre visible. `autoOpen` lo abre
 // solo al cargar (ej. cuando el intento anterior falló y hay un error que
 // mostrar ahí mismo, no en la página de fondo).
-function fabModal({ id, label, titulo, contenido, autoOpen = false }) {
+// Con `boton` el disparador es un botón normal con ese texto (en vez del FAB),
+// para acciones sobre algo que ya existe (ej. "Editar datos" del alumno).
+function fabModal({ id, label, titulo, contenido, autoOpen = false, boton = null }) {
   return `
-    <button class="fab" id="${id}Btn" aria-label="${esc(label)}" type="button">${svg('mas', 26)}</button>
+    ${boton ? `<button class="btn ghost" id="${id}Btn" type="button">${esc(boton)}</button>`
+      : `<button class="fab" id="${id}Btn" aria-label="${esc(label)}" type="button">${svg('mas', 26)}</button>`}
     <div class="modal-overlay" id="${id}Overlay"></div>
     <div class="modal-sheet" id="${id}" aria-hidden="true">
       <div class="modal-head"><h3>${esc(titulo)}</h3><button class="iconbtn" id="${id}Close" type="button" aria-label="Cerrar">${svg('cerrar', 18)}</button></div>
@@ -753,7 +756,36 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     : req.query.cert_error ? `<p class="pill bad">✗ ${esc(req.query.cert_error)}</p>`
     : req.query.baja ? `<p class="pill ok">✓ Alumno dado de baja: su lugar quedó libre y sus pagos pendientes se cancelaron.</p>`
     : req.query.clabe_error ? `<p class="pill bad">✗ ${esc(req.query.clabe_error)}</p>`
+    : req.query.editado ? `<p class="pill ok">✓ Datos actualizados.</p>`
     : '';
+
+  // "Editar datos": cualquier grupo con fecha de inicio (los llenos solo si
+  // es el suyo actual), del más reciente al más viejo.
+  const grupos = (await query(
+    `SELECT * FROM cohortes WHERE fecha_inicio IS NOT NULL OR id = $1 ORDER BY fecha_inicio DESC NULLS LAST, curso`, [a.cohorte_id])).rows;
+  const opcionesGrupo = grupos.map(g => {
+    const actual = g.id === a.cohorte_id;
+    const lleno = !actual && !a.fecha_baja && g.lugares_ocupados >= g.cupo_maximo;
+    return `<option value="${g.id}"${actual ? ' selected' : ''}${lleno ? ' disabled' : ''}>${esc(calendario.codigoGrupo(g) || g.curso)} · inicia ${fmtDia(g.fecha_inicio)}${lleno ? ' (lleno)' : ''}</option>`;
+  }).join('');
+  const editar = fabModal({
+    id: 'editarAlumno', label: 'Editar datos', titulo: 'Editar datos', boton: 'Editar datos',
+    autoOpen: !!req.query.editar_error,
+    contenido: `
+      ${req.query.editar_error ? `<p class="pill bad">✗ ${esc(req.query.editar_error)}</p>` : ''}
+      <form method="post" action="/admin/alumno/${a.id}/editar">
+        <div class="field"><label>Nombre completo</label><input type="text" name="nombre" value="${esc(a.nombre)}" required></div>
+        <div class="field"><label>Correo</label><input type="email" name="correo" value="${esc(a.correo || '')}" required></div>
+        <div class="field"><label>WhatsApp</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" name="pais" value="${esc(a.whatsapp_pais || '+52')}" style="max-width:80px" aria-label="Lada del país">
+            <input type="tel" inputmode="numeric" name="whatsapp" value="${esc(a.whatsapp || '')}" placeholder="10 dígitos" aria-label="Número">
+          </div></div>
+        <div class="field"><label>Grupo</label><select name="cohorteId">${opcionesGrupo}</select>
+          <p class="sub" style="margin:6px 0 0;font-size:12.5px">Al cambiar de grupo se mueve su lugar y las fechas de sus pagos pendientes se recalculan desde el inicio del grupo nuevo. Los pagos ya hechos se conservan.</p></div>
+        <button class="btn block" type="submit">Guardar</button>
+      </form>`,
+  });
   const pendientes = pagos.filter(p => p.estado === 'pendiente' || p.estado === 'vencido').length;
 
   // Generar el PDF tarda unos segundos (abre un Chrome en el servidor): se
@@ -830,11 +862,12 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
       <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
     </div>
-      ${a.fecha_baja ? '' : `<div class="actions">
-        <form method="post" action="/admin/alumno/${a.id}/baja" onsubmit="return confirm('¿Dar de baja a este alumno? Se libera su lugar y se cancelan sus pagos pendientes.')">
+      <div class="actions">
+        ${editar}
+        ${a.fecha_baja ? '' : `<form method="post" action="/admin/alumno/${a.id}/baja" onsubmit="return confirm('¿Dar de baja a este alumno? Se libera su lugar y se cancelan sus pagos pendientes.')">
           <button class="btn danger" type="submit">Dar de baja</button>
-        </form>
-      </div>`}</div>
+        </form>`}
+      </div></div>
     <h2>Plan de pagos</h2>
     ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
       <button class="btn ghost" type="submit">Liquidar</button>
@@ -906,6 +939,28 @@ router.post('/alumno/:id/simular-transferencia', requireAuth, async (req, res) =
   }
   await new Promise(r => setTimeout(r, 6000));
   res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+// "Editar datos" de la ficha: ver engine.editarAlumno.
+router.post('/alumno/:id/editar', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const nombre = (b.nombre || '').toString().trim();
+  const correo = (b.correo || '').toString().trim();
+  const numero = (b.whatsapp || '').toString().replace(/\D/g, '');
+  const pais = '+' + ((b.pais || '').toString().replace(/\D/g, '') || '52');
+  const cohorteId = Number(b.cohorteId);
+  const error = (msg) => res.redirect(`/admin/alumno/${req.params.id}?editar_error=${encodeURIComponent(msg)}`);
+
+  if (nombre.length < 2) return error('Escribe el nombre.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo)) return error('Ese correo no es válido.');
+  if (numero && (numero.length < 7 || numero.length > 15)) return error('Ese número de WhatsApp no es válido.');
+  if (!Number.isInteger(cohorteId) || cohorteId <= 0) return error('Elige un grupo.');
+
+  const r = await engine.editarAlumno(req.params.id, {
+    nombre, correo, cohorteId, whatsapp: numero ? { pais, numero } : null,
+  });
+  if (!r.ok) return error(r.error);
+  res.redirect(`/admin/alumno/${req.params.id}?editado=1`);
 });
 
 // Reemplaza a "Archivar"/"Reactivar" (20 oct 2026): ver engine.darDeBaja.
