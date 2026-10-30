@@ -1,4 +1,4 @@
-// src/engine.js — lógica de negocio: canal, deduplicado, alta y secuencia
+// src/engine.js — lógica de negocio: inscripción, alumnos, pagos, grupos y certificados
 const crypto = require('crypto');
 const { config, query } = require('./db');
 const providers = require('./providers');
@@ -6,20 +6,9 @@ const tpl = require('./templates');
 const calendario = require('./calendario');
 
 const HORA = 3600 * 1000;
-const OFFSET = { 0: config.seq.step1, 1: config.seq.step2, 2: config.seq.step3 }; // horas desde inicio de secuencia
-const STEP_MSG = { 0: 'recordatorio', 1: 'valor', 2: 'cierre' }; // qué mensaje toca según paso actual
 
 /* ---------------------------- utilidades ---------------------------- */
-async function registrarMensaje(prospectoId, { tipo, canal, estado, contenido = null, error = null }) {
-  await query(
-    `INSERT INTO mensajes (prospecto_id, tipo, canal, estado, contenido, error)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [prospectoId, tipo, canal, estado, contenido, error]
-  );
-}
-
-// Igual que registrarMensaje, pero para el timeline de un alumno (recordatorios
-// de pago) en vez de un prospecto — son líneas independientes en `mensajes`.
+// Agrega una línea al historial de un alumno (tabla `mensajes`).
 async function registrarMensajeAlumno(alumnoId, { tipo, canal, estado, contenido = null, error = null }) {
   await query(
     `INSERT INTO mensajes (alumno_id, tipo, canal, estado, contenido, error)
@@ -28,21 +17,9 @@ async function registrarMensajeAlumno(alumnoId, { tipo, canal, estado, contenido
   );
 }
 
-// Próxima fecha de inicio del curso (la más cercana futura entre sus cohortes/modalidades)
-async function proximaFecha(curso) {
-  const { rows } = await query(
-    `SELECT fecha_inicio FROM cohortes
-     WHERE curso = $1 AND fecha_inicio IS NOT NULL AND fecha_inicio >= CURRENT_DATE
-     ORDER BY fecha_inicio ASC LIMIT 1`, [curso]
-  );
-  if (!rows[0]) return null;
-  return new Date(rows[0].fecha_inicio).toLocaleDateString('es-MX',
-    { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
 /* ------------------- envío con canal + respaldo ------------------- */
 // Mecanismo base: intenta WhatsApp y, si falla y hay correo, respalda por correo.
-// `onLog` registra cada intento en el timeline correcto (prospecto o alumno).
+// `onLog` registra cada intento en el historial del alumno.
 async function enviarConVars({ pais, numero, correo, canal, tipo, vars, onLog }) {
   const { cuerpo } = tpl.render(tipo, vars);
 
@@ -68,23 +45,6 @@ async function enviarConVars({ pais, numero, correo, canal, tipo, vars, onLog })
   return false;
 }
 
-// Envía un mensaje de la secuencia a un prospecto (bienvenida/recordatorio/valor/cierre).
-// Misma lógica de siempre — solo se extrajo a enviarConVars() para poder reutilizarla
-// también en el cobro de pagos (ver enviarLinkPago), sin duplicar el canal WhatsApp→correo.
-async function enviar(p, tipo) {
-  const fecha = tipo === 'valor' ? (await proximaFecha(p.curso)) || 'muy pronto' : '';
-  // Las plantillas dicen literal "el curso de {{2}}" — con "Aún no decido"
-  // (el valor real que se guarda en prospectos.curso) se leería "el curso de
-  // Aún no decido". Solo para el texto del mensaje se usa un valor que sí
-  // encaja en esa frase; en la base y en /admin se sigue viendo "Aún no decido".
-  const cursoMsg = p.curso === 'Aún no decido' ? 'Análisis de Datos' : p.curso;
-  const vars = [p.nombre, cursoMsg, fecha];
-  return enviarConVars({
-    pais: p.telefono_pais, numero: p.telefono, correo: p.correo, canal: p.canal, tipo, vars,
-    onLog: (m) => registrarMensaje(p.id, m),
-  });
-}
-
 // Envía la liga de pago (Stripe Checkout) de un pago 2-5 a un alumno.
 async function enviarLinkPago(alumno, pago, url) {
   const vars = [alumno.nombre, alumno.curso, pago.numero_pago, Math.round(Number(pago.monto)), url];
@@ -93,132 +53,6 @@ async function enviarLinkPago(alumno, pago, url) {
     canal: 'correo', tipo: 'pago', vars,
     onLog: (m) => registrarMensajeAlumno(alumno.id, m),
   });
-}
-
-async function tocarUltimoMensaje(id) {
-  await query(`UPDATE prospectos SET fecha_ultimo_mensaje = now() WHERE id = $1`, [id]);
-}
-
-// Respuesta manual del operador desde el panel admin (texto libre, no plantilla).
-// Solo WhatsApp por ahora — requiere que el prospecto tenga teléfono, y WhatsApp
-// solo entrega texto libre dentro de las 24h después de su último mensaje entrante
-// (si no, Meta rechaza y el error queda en el timeline tal cual lo manda Meta).
-async function responderManual(prospecto, texto) {
-  if (!prospecto.telefono) return { ok: false, error: 'Este prospecto no dejó WhatsApp.' };
-  const r = await providers.sendWhatsAppTexto({ pais: prospecto.telefono_pais, numero: prospecto.telefono, texto });
-  await registrarMensaje(prospecto.id, { tipo: 'manual', canal: 'whatsapp', estado: r.estado, contenido: texto, error: r.error });
-  if (r.ok) await tocarUltimoMensaje(prospecto.id);
-  return r;
-}
-
-/* ------------------- deduplicado + alta ------------------- */
-async function buscarExistente({ pais, numero, correo }) {
-  const cond = [], params = [];
-  if (numero) { params.push(pais, numero); cond.push(`(telefono_pais = $${params.length - 1} AND telefono = $${params.length})`); }
-  if (correo) { params.push(correo); cond.push(`correo = $${params.length}`); }
-  if (!cond.length) return null;
-  const { rows } = await query(
-    `SELECT * FROM prospectos WHERE ${cond.join(' OR ')} ORDER BY id DESC LIMIT 1`, params);
-  return rows[0] || null;
-}
-
-// A partir del 1 oct 2026 el sitio solo maneja correo — el número real salió
-// de la API (se migró a la app de WhatsApp Business, ver ESTADO.md). Se deja
-// la lógica de WhatsApp intacta en enviarConVars/providers por si algún día
-// se reconecta un número; aquí simplemente ya no se elige nunca ese canal.
-function canalDe(numero) { return 'correo'; }
-
-// Alta o actualización según reglas del brief. NO envía nada (eso lo hace afterIntake).
-async function altaProspecto(data) {
-  const pais = data.whatsapp?.pais || null;
-  const numero = data.whatsapp?.numero || null;
-  const correo = data.correo || null;
-  const curso = data.curso || 'Aún no decido';
-  const nombre = data.nombre;
-
-  const existente = await buscarExistente({ pais, numero, correo });
-
-  if (existente) {
-    const hitos = [existente.fecha_registro, existente.fecha_ultimo_mensaje, existente.fecha_ultimo_entrante]
-      .filter(Boolean).map(d => new Date(d).getTime());
-    const ultimo = Math.max(...hitos);
-    const dias = (Date.now() - ultimo) / (24 * HORA);
-
-    if (dias < config.seq.dedupResetDays) {
-      // Reciente: solo actualiza curso y rellena datos faltantes; NO reinicia secuencia.
-      const { rows } = await query(
-        `UPDATE prospectos SET
-           curso = $2,
-           telefono_pais = COALESCE(telefono_pais, $3),
-           telefono      = COALESCE(telefono, $4),
-           correo        = COALESCE(correo, $5),
-           canal         = 'correo'
-         WHERE id = $1 RETURNING *`,
-        [existente.id, curso, pais, numero, correo]);
-      return { action: 'actualizado', prospecto: rows[0] };
-    }
-
-    // Frío que volvió (>= N días): actualiza datos y REINICIA la secuencia desde el paso 0.
-    const { rows } = await query(
-      `UPDATE prospectos SET
-         nombre = $2, curso = $3, telefono_pais = $4, telefono = $5, correo = $6,
-         canal = $7, estado_secuencia = 'activa', paso_actual = 0,
-         fecha_inicio_secuencia = now(), fecha_ultimo_mensaje = NULL
-       WHERE id = $1 RETURNING *`,
-      [existente.id, nombre, curso, pais, numero, correo, canalDe(numero)]);
-    return { action: 'reiniciado', prospecto: rows[0] };
-  }
-
-  // Nuevo prospecto
-  const { rows } = await query(
-    `INSERT INTO prospectos (nombre, curso, telefono_pais, telefono, correo, canal, origen)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [nombre, curso, pais, numero, correo, canalDe(numero), data.origen || 'sitio_web']);
-  return { action: 'creado', prospecto: rows[0] };
-}
-
-// En segundo plano tras responder al formulario: bienvenida + sync a SharePoint.
-async function afterIntake(prospecto, action) {
-  try {
-    if (action === 'creado' || action === 'reiniciado') {
-      if (config.automatizacionPausada) {
-        await registrarMensaje(prospecto.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Bienvenida NO mandada: automatización pausada.' });
-        return;
-      }
-      const ok = await enviar(prospecto, 'bienvenida');
-      if (ok) await tocarUltimoMensaje(prospecto.id);
-      await providers.syncProspecto(prospecto);
-    }
-  } catch (err) {
-    console.error('[afterIntake] error:', err.message);
-  }
-}
-
-/* ------------------- motor de la secuencia (cron) ------------------- */
-async function correrSecuencia() {
-  if (config.automatizacionPausada) return 0;
-  const { rows } = await query(`SELECT * FROM prospectos WHERE estado_secuencia = 'activa'`);
-  let enviados = 0;
-  for (const p of rows) {
-    const paso = p.paso_actual;
-    if (paso >= 3) {
-      await query(`UPDATE prospectos SET estado_secuencia='finalizada' WHERE id=$1`, [p.id]);
-      continue;
-    }
-    const due = new Date(p.fecha_inicio_secuencia).getTime() + OFFSET[paso] * HORA;
-    if (Date.now() < due) continue;
-
-    const tipo = STEP_MSG[paso];
-    await enviar(p, tipo);                       // el resultado (incluido fallo) queda en el timeline
-    const nuevoPaso = paso + 1;
-    await query(
-      `UPDATE prospectos SET paso_actual=$2, fecha_ultimo_mensaje=now(),
-         estado_secuencia = CASE WHEN $2 >= 3 THEN 'finalizada' ELSE 'activa' END
-       WHERE id=$1`, [p.id, nuevoPaso]);
-    enviados++;
-  }
-  if (enviados) console.info(`[secuencia] ${enviados} mensaje(s) procesado(s)`);
-  return enviados;
 }
 
 /* ------------------- inscripción, cohortes y pagos ------------------- */
@@ -255,7 +89,7 @@ function baseUrl() {
 // de cupo es solo para no generar un link de pago si la cohorte ya está llena
 // en este instante; la ocupación real y autoritativa del cupo pasa en
 // confirmarInscripcion(), al confirmarse el pago.
-async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, urlExito, urlCancelado }) {
+async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, urlExito, urlCancelado }) {
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte || !cohorte.fecha_inicio) return { ok: false, motivo: 'cohorte_no_existe' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
@@ -282,7 +116,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
     metadata: {
       tipo: 'inscripcion', cohorte_id: String(cohorteId), nombre,
       whatsapp_pais: whatsapp?.pais || '', whatsapp: whatsapp?.numero || '',
-      correo: correo || '', prospecto_id: prospectoId ? String(prospectoId) : '',
+      correo: correo || '',
     },
     urlExito, urlCancelado, customerId,
   });
@@ -292,7 +126,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
     // Sin credenciales reales de Stripe: se completa la inscripción de una vez,
     // igual que el resto del sistema simula un envío exitoso sin cuenta externa.
     const alumno = await confirmarInscripcion({
-      cohorteId, nombre, whatsapp, correo, prospectoId,
+      cohorteId, nombre, whatsapp, correo,
       stripeSessionId: r.sessionId, stripePaymentIntentId: null,
     });
     return { ok: true, simulado: true, alumno };
@@ -303,7 +137,7 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, prospec
 // Confirma el pago 1: crea al alumno, genera los 5 pagos programados (el 1 ya
 // 'pagado') y ocupa el cupo de la cohorte. Idempotente por stripe_session_id,
 // para no duplicar el alta si Stripe reenvía el mismo webhook.
-async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prospectoId, stripeSessionId, stripePaymentIntentId, stripeCustomerId = null, metodo = 'stripe', enviarBienvenida = true }) {
+async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, stripeSessionId, stripePaymentIntentId, stripeCustomerId = null, metodo = 'stripe', enviarBienvenida = true }) {
   if (stripeSessionId) {
     const existe = await query(
       `SELECT a.* FROM alumnos a JOIN pagos p ON p.alumno_id = a.id
@@ -315,9 +149,9 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, prosp
   if (!cohorte) throw new Error(`cohorte #${cohorteId} no existe`);
 
   const { rows: [alumno] } = await query(
-    `INSERT INTO alumnos (prospecto_id, cohorte_id, nombre, whatsapp_pais, whatsapp, correo, stripe_customer_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [prospectoId || null, cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null, stripeCustomerId]);
+    `INSERT INTO alumnos (cohorte_id, nombre, whatsapp_pais, whatsapp, correo, stripe_customer_id)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null, stripeCustomerId]);
 
   // Su CLABE fija (la misma que vio si pagó por transferencia) para la
   // tarjeta "Transferencia" del panel. No es indispensable: si falla, se
@@ -660,7 +494,7 @@ async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.com
     await confirmarInscripcion({
       cohorteId: Number(meta.cohorte_id), nombre: meta.nombre,
       whatsapp: meta.whatsapp ? { pais: meta.whatsapp_pais, numero: meta.whatsapp } : null,
-      correo: meta.correo || null, prospectoId: meta.prospecto_id ? Number(meta.prospecto_id) : null,
+      correo: meta.correo || null,
       stripeSessionId: session.id, stripePaymentIntentId: session.payment_intent || null,
       stripeCustomerId: session.customer || null, metodo,
     });
@@ -680,7 +514,7 @@ async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.com
   }
 }
 
-// Cron (además de correrSecuencia): por cada pago 2-5 pendiente/vencido que esté
+// Cron horario: por cada pago 2-5 pendiente/vencido que esté
 // por vencer dentro de la ventana configurada, genera su Checkout Session (si no
 // se ha reenviado el link en las últimas ~20h) y la manda por WhatsApp→correo.
 async function revisarPagosPorVencer() {
@@ -752,9 +586,9 @@ async function revisarPagosPorVencer() {
 }
 
 module.exports = {
-  altaProspecto, afterIntake, correrSecuencia, registrarMensaje, registrarMensajeAlumno, proximaFecha,
+  registrarMensajeAlumno,
   cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
-  confirmarPago, procesarWebhookStripe, revisarPagosPorVencer, responderManual,
+  confirmarPago, procesarWebhookStripe, revisarPagosPorVencer,
   subirCertificado, enviarCertificado, darDeBaja, generarClabe, procesarTransferencia,
   crearCohorte, actualizarCohorte, recalcularPagosCohorte,
 };

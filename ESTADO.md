@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 28 de octubre de 2026
+Última actualización: 29 de octubre de 2026
 
 ## Qué es
 
@@ -38,6 +38,21 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Prospectos eliminados por completo (29 oct 2026)** — el usuario ya
+  había rescatado lo que necesitaba y pidió quitar todo lo relacionado
+  (autorizando cada paso). Se borró: la tabla `prospectos` (27 registros del
+  18 ago al 12 oct) y sus 106 mensajes, la columna `prospecto_id` de
+  `alumnos` y `mensajes` (ningún alumno estaba ligado a un prospecto),
+  `POST /api/leads`, la secuencia automática de seguimiento y sus plantillas
+  (bienvenida/recordatorio/valor/cierre), el webhook de WhatsApp entrante,
+  la bitácora a Excel/SharePoint (nunca estuvo configurada en producción),
+  las pantallas de prospectos del panel (`/admin` ahora lleva a Grupos),
+  `gracias.html` y las variables `SEQ_*`, `DEDUP_RESET_DAYS`,
+  `GRAPH_DRIVE_ID`/`GRAPH_WORKBOOK_ITEM_ID`/`GRAPH_TABLE_NAME`,
+  `WHATSAPP_VERIFY_TOKEN` y `TPL_BIENVENIDA/RECORDATORIO/VALOR/CIERRE`. El
+  borrado en la base corre desde `schema.sql` al desplegar. Sin respaldo
+  (el usuario no lo quiso).
 
 - [x] **Recordatorios de cada grupo en el calendario de Outlook (28 oct 2026)**
   - El usuario pasó su borrador de procesos ("Procesos Borrador.pdf":
@@ -880,9 +895,8 @@ Cambios concretos:
   — el tenant tiene Security Defaults activado y no ofrece contraseñas de
   aplicación; Graph además reutiliza la misma app que la bitácora a
   Excel/SharePoint (una sola credencial para ambas cosas)
-- **Regla de duplicados:** contacto repetido en <14 días → actualiza el
-  curso de interés sin reiniciar la secuencia; ≥14 días → se trata como
-  prospecto frío que volvió y la secuencia se reinicia desde cero
+- ~~**Regla de duplicados** de prospectos~~ — ya no aplica: los
+  prospectos y su secuencia se eliminaron el 29 oct 2026
 - **Identidad visual:** tema claro, azul #3B82F6 / #2563EB, sólidos y
   degradados discretos (nada de glow ni sombras grandes), tipografías
   Montserrat (títulos) + Work Sans (texto) + IBM Plex Mono (detalles

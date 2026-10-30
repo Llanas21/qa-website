@@ -1,6 +1,6 @@
-// src/templates.js — contenido de los mensajes de la secuencia + cobro de pagos
-// Variables: {{1}} nombre, {{2}} curso, {{3}} fecha de inicio (solo "valor"),
-// número de pago (solo "pago") o liga de descarga (solo "certificado"),
+// src/templates.js — correos a alumnos: inscripción, cobro de pagos, transferencia y certificado
+// Variables: {{1}} nombre, {{2}} curso, {{3}} número de pago (solo "pago") o
+// liga de descarga (solo "certificado"),
 // {{4}} monto y {{5}} liga de pago (solo "pago").
 // "transferencia" (datos para pagar por SPEI tras elegirlo en la página de
 // pago) usa las suyas: {{3}} concepto, {{4}} monto, {{5}} CLABE, {{6}} banco,
@@ -29,10 +29,6 @@ const T = {
 };
 
 const asunto = {
-  bienvenida:  'Información del curso de {{2}} — Querify Analytics',
-  recordatorio:'¿Te quedó alguna duda sobre el curso de {{2}}?',
-  valor:       'Cupo limitado — curso de {{2}} en Querify Analytics',
-  cierre:      'Seguimos aquí cuando estés listo — {{2}}',
   pago:        'Pago {{3}}/5 por vencer — curso de {{2}}',
   inscripcion: '¡Tu lugar quedó apartado! — curso de {{2}}',
   certificado: '¡Tu certificado de {{2}} ya está listo! 🎓',
@@ -40,30 +36,6 @@ const asunto = {
 };
 
 const cuerpo = {
-  bienvenida: `¡Hola {{1}}! 👋 Gracias por tu interés en el curso de {{2}} de Querify Analytics.
-
-Te cuento lo esencial:
-📚 30 horas de capacitación 100% en vivo por Microsoft Teams
-🎓 Nivel: de cero a experto
-👥 Cupo limitado a 10 alumnos, para un mejor seguimiento
-📜 Certificado con valor curricular al finalizar
-
-💰 Inversión total: $2,500 MXN, en 5 pagos de $500. Puedes apartar tu lugar con el primer pago y liquidar el resto cada 2 semanas a lo largo del curso.
-
-¿Tienes dudas o quieres conocer los horarios disponibles (entre semana o sábado)? Aquí estoy para ayudarte 🙌`,
-
-  recordatorio: `Hola {{1}}, ¿cómo estás? Quería saber si te quedó alguna duda sobre el curso de {{2}}. Con gusto te platico más sobre los horarios disponibles o cómo apartar tu lugar cuando gustes 😊`,
-
-  valor: `Hola {{1}}, te comparto que el cupo del curso de {{2}} es limitado a solo 10 alumnos por grupo, para poder darte un seguimiento más cercano durante las clases.
-
-La próxima generación arranca el {{3}} — si te interesa asegurar tu lugar, recuerda que puedes apartarlo con el primer pago de $500 MXN (son 5 pagos de $500 en total).
-
-Cualquier duda, aquí sigo 🙌`,
-
-  cierre: `Hola {{1}}, no quiero ser inoportuno, así que este será mi último mensaje por ahora 🙂
-
-El curso de {{2}} sigue disponible cuando estés listo — solo escríbeme y con gusto retomamos la plática. ¡Éxito en lo que decidas! 🚀`,
-
   pago: `Hola {{1}}, tu pago {{3}}/5 del curso de {{2}} está próximo a vencer.
 
 💳 Monto: $ {{4}} MXN
@@ -98,7 +70,7 @@ Instrucciones completas: {{8}}`,
 };
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
-const numVars = { bienvenida: 2, recordatorio: 2, valor: 3, cierre: 2, pago: 5, inscripcion: 2, certificado: 3, transferencia: 8 };
+const numVars = { pago: 5, inscripcion: 2, certificado: 3, transferencia: 8 };
 
 // {{N}} genérico (antes solo soportaba {{1}}..{{3}}) para poder agregar la
 // plantilla de "pago" sin tocar el reemplazo de las 4 plantillas existentes.
@@ -174,44 +146,6 @@ function shell({ preheader = '', contenido }) {
 }
 
 const contenidoHtml = {
-  bienvenida: (v) => `
-    <p style="margin:0 0 16px;font-size:17px;line-height:1.5;color:${T.ink}"><b>¡Hola ${esc(v[0])}! 👋</b></p>
-    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:${T.text}">Gracias por tu interés en el curso de <b>${esc(v[1])}</b> de Querify Analytics. Te cuento lo esencial:</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;width:100%">
-      ${[
-        ['📚', '30 horas de capacitación 100% en vivo por Microsoft Teams'],
-        ['🎓', 'Nivel: de cero a experto'],
-        ['👥', 'Cupo limitado a 10 alumnos, para un mejor seguimiento'],
-        ['📜', 'Certificado con valor curricular al finalizar'],
-      ].map(([icono, texto]) => `
-      <tr>
-        <td style="width:28px;vertical-align:top;font-size:16px;padding:4px 0">${icono}</td>
-        <td style="font-size:14.5px;line-height:1.5;color:${T.muted};padding:4px 0">${texto}</td>
-      </tr>`).join('')}
-    </table>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.accentSoft};border-radius:10px;margin:0 0 22px"><tr><td style="padding:14px 18px">
-      <p style="margin:0;font-size:14.5px;line-height:1.5;color:${T.accentInk}"><b>💰 Inversión total: $2,500 MXN</b>, en 5 pagos de $500. Puedes apartar tu lugar con el primer pago y liquidar el resto cada 2 semanas.</p>
-    </td></tr></table>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">¿Tienes dudas o quieres conocer los horarios disponibles (entre semana o sábado)? Aquí estoy para ayudarte 🙌</p>
-    ${boton('Apartar mi lugar', `${SITIO}/cursos/inscripcion.html`)}`,
-
-  recordatorio: (v) => `
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, ¿cómo estás? Quería saber si te quedó alguna duda sobre el curso de <b>${esc(v[1])}</b>. Con gusto te platico más sobre los horarios disponibles o cómo apartar tu lugar cuando gustes 😊</p>
-    ${boton('Apartar mi lugar', `${SITIO}/cursos/inscripcion.html`)}`,
-
-  valor: (v) => `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, te comparto que el cupo del curso de <b>${esc(v[1])}</b> es limitado a solo <b>10 alumnos por grupo</b>, para poder darte un seguimiento más cercano durante las clases.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.accentSoft};border-radius:10px;margin:0 0 20px"><tr><td style="padding:14px 18px">
-      <p style="margin:0;font-size:14.5px;line-height:1.5;color:${T.accentInk}">📅 La próxima generación arranca el <b>${esc(v[2])}</b> — puedes asegurar tu lugar con el primer pago de $500 MXN (5 pagos de $500 en total).</p>
-    </td></tr></table>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">Cualquier duda, aquí sigo 🙌</p>
-    ${boton('Apartar mi lugar', `${SITIO}/cursos/inscripcion.html`)}`,
-
-  cierre: (v) => `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, no quiero ser inoportuno, así que este será mi último mensaje por ahora 🙂</p>
-    <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:${T.text}">El curso de <b>${esc(v[1])}</b> sigue disponible cuando estés listo — solo escríbeme y con gusto retomamos la plática. ¡Éxito en lo que decidas! 🚀</p>
-    ${boton('Ver los cursos', SITIO)}`,
-
   pago: (v) => `
     <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, tu pago <b>${esc(v[2])}/5</b> del curso de <b>${esc(v[1])}</b> está próximo a vencer.</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.surface2};border:1px solid ${T.line};border-radius:10px;margin:0 0 22px"><tr><td style="padding:18px 20px;text-align:center">

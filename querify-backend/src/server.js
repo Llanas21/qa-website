@@ -70,9 +70,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Motor de la secuencia de seguimiento + cobro de pagos 2-5 por vencer
-  cron.schedule(config.seq.cron, () => {
-    engine.correrSecuencia().catch(e => console.error('[cron]', e.message));
+  // Cobro de pagos 2-5 por vencer + calendario de Outlook
+  cron.schedule(config.cron, () => {
     engine.revisarPagosPorVencer().catch(e => console.error('[cron pagos]', e.message));
     calendario.sincronizarPendientes().catch(e => console.error('[cron calendario]', e.message));
   });
@@ -84,7 +83,7 @@ async function main() {
   app.listen(config.port, () => {
     console.info(`\n  Querify backend en http://localhost:${config.port}`);
     console.info(`  Panel:  http://localhost:${config.port}/admin`);
-    console.info(`  Cron:   "${config.seq.cron}"  (recordatorio ${config.seq.step1}h · valor ${config.seq.step2}h · cierre ${config.seq.step3}h)`);
+    console.info(`  Cron:   "${config.cron}"  (recordatorios de pago y calendario)`);
     console.info(`  Simulación activa en: ${modo.length ? modo.join(', ') : 'ninguno (todo real)'}\n`);
   });
 }

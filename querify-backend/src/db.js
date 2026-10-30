@@ -19,13 +19,8 @@ const config = {
     token: env('WHATSAPP_TOKEN'),
     phoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
     apiVersion: env('WHATSAPP_API_VERSION', 'v21.0'),
-    verifyToken: env('WHATSAPP_VERIFY_TOKEN', 'querify-verify'),
     lang: env('WHATSAPP_TEMPLATE_LANG', 'es_MX'),
     templates: {
-      bienvenida: env('TPL_BIENVENIDA', 'querify_bienvenida'),
-      recordatorio: env('TPL_RECORDATORIO', 'querify_recordatorio'),
-      valor: env('TPL_VALOR', 'querify_valor'),
-      cierre: env('TPL_CIERRE', 'querify_cierre'),
       pago: env('TPL_PAGO', 'querify_pago'),
       inscripcion: env('TPL_INSCRIPCION', 'querify_inscripcion'),
     },
@@ -40,8 +35,7 @@ const config = {
 
   graph: {
     tenantId: env('GRAPH_TENANT_ID'), clientId: env('GRAPH_CLIENT_ID'),
-    clientSecret: env('GRAPH_CLIENT_SECRET'), driveId: env('GRAPH_DRIVE_ID'),
-    workbookItemId: env('GRAPH_WORKBOOK_ITEM_ID'), tableName: env('GRAPH_TABLE_NAME', 'Prospectos'),
+    clientSecret: env('GRAPH_CLIENT_SECRET'),
   },
 
   // Recordatorios de cada grupo en el calendario de Outlook (ver
@@ -80,20 +74,12 @@ const config = {
   // al Chrome instalado, ej. C:\Program Files\Google\Chrome\Application\chrome.exe
   chromePath: env('CHROME_PATH'),
 
-  seq: {
-    step1: num('SEQ_STEP1_HOURS', 24),
-    step2: num('SEQ_STEP2_HOURS', 72),
-    step3: num('SEQ_STEP3_HOURS', 168),
-    dedupResetDays: num('DEDUP_RESET_DAYS', 14),
-    cron: env('CRON_SCHEDULE', '0 * * * *'),
-  },
+  // Cron horario: recordatorios de pago 2-5 y calendario de Outlook.
+  cron: env('CRON_SCHEDULE', '0 * * * *'),
 
-  // Interruptor general: pausa TODO el seguimiento automático proactivo (bienvenida
-  // al alta, recordatorio/valor/cierre de la secuencia, recordatorios de pago 2-5)
-  // sin tocar credenciales ni desmontar nada — para cuando se está reorganizando el
-  // proceso de atención (ej. moviendo el número real a la app de WhatsApp Business
-  // para contestar a mano). NO pausa la confirmación de inscripción (`querify_inscripcion`)
-  // al pagar: esa es un recibo transaccional de un pago real, no seguimiento proactivo.
+  // Interruptor general: pausa los recordatorios de pago 2-5 automáticos sin tocar
+  // credenciales ni desmontar nada. NO pausa la confirmación de inscripción al
+  // pagar: esa es un recibo transaccional de un pago real, no seguimiento proactivo.
   automatizacionPausada: bool('AUTOMATIZACION_PAUSADA', false),
 };
 
@@ -102,7 +88,6 @@ const graphReady = !!(config.graph.tenantId && config.graph.clientId && config.g
 config.simulate = {
   whatsapp: !(config.whatsapp.token && config.whatsapp.phoneNumberId),
   email: !graphReady,
-  sync: !(graphReady && config.graph.workbookItemId),
   calendario: !(graphReady && config.calendario.buzones.length),
   stripe: !config.stripe.secretKey,
 };

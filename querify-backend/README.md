@@ -1,39 +1,43 @@
-# Querify Analytics — Backend de captura y seguimiento
+# Querify Analytics — Backend
 
-Backend en Node.js (Express + PostgreSQL) que recibe los prospectos del sitio, guarda cada uno, y corre la **secuencia automática de seguimiento por WhatsApp** (con correo de respaldo). Incluye un **panel de administración**.
+Backend en Node.js (Express + PostgreSQL) de la academia: inscripción con pago real (Stripe, con tarjeta o transferencia SPEI), plan de 5 pagos por alumno con cobro automático de los pagos 2-5, certificados en PDF, recordatorios de cada grupo en el calendario de Outlook y un **panel de administración** (`/admin`).
 
-Funciona **sin credenciales en modo simulación**: puedes probar todo el flujo en local (el prospecto se guarda, la bienvenida se "envía", el cron avanza la secuencia y el panel muestra el timeline) sin cuentas de Meta/Graph. Cuando pongas las credenciales, empieza a enviar de verdad sin tocar código.
+Funciona **sin credenciales en modo simulación**: cada integración (correo, calendario, Stripe, WhatsApp) que no tenga credenciales en `.env` se simula en vez de fallar, así que el flujo completo se puede probar en local sin cuentas externas. Cuando pones las credenciales, empieza a funcionar de verdad sin tocar código.
+
+> El estado del proyecto y las decisiones ya tomadas están en `../ESTADO.md`; la guía técnica, en `../CLAUDE.md`.
 
 ---
 
 ## Qué hace
 
-- **`POST /api/leads`** — recibe el formulario, revisa el honeypot, valida del lado servidor, aplica la **regla de duplicados de 14 días**, guarda en PostgreSQL y responde al instante. En segundo plano dispara la **bienvenida** y sincroniza una copia a Excel/SharePoint.
-- **Motor de secuencia (cron horario)** — a cada prospecto activo le manda: recordatorio a las **24 h**, mensaje de valor a las **72 h** (con la próxima fecha de inicio) y cierre suave a los **7 días**. Luego finaliza.
-- **Webhook de WhatsApp** — si el prospecto responde por WhatsApp, la secuencia se **detiene automáticamente**.
-- **Canal con respaldo** — WhatsApp principal; si no dejó WhatsApp, todo va por correo; si un WhatsApp falla y hay correo, se reintenta por correo.
-- **Apartado de lugar con pago real (Stripe)** — `POST /api/inscripcion` valida cupo de la cohorte y crea una Checkout Session de $500 MXN (pago 1/5). Al confirmarse por webhook, se crea el alumno, se generan los 5 pagos programados (semanas 0/2/4/6/8) y se ocupa el cupo. Los pagos 2-5 los cobra el mismo cron: genera su link de Stripe y lo manda por WhatsApp→correo cerca del vencimiento.
-- **Panel `/admin`** — prospectos (lista con filtros, detalle con timeline, marcar como respondió/pausar), **alumnos** (plan de pagos por alumno, marcar pago como pagado manualmente), **cohortes** (fecha de inicio y cupo por curso × modalidad) y errores de envío.
+- **Inscripción (`POST /api/inscripcion`)** — valida el cupo del grupo y abre el pago 1/5 de $500 MXN en Stripe Checkout, con **tarjeta o transferencia bancaria** (cada alumno tiene una CLABE propia y fija). Al confirmarse el pago (webhook `/webhook/stripe`) se crea el alumno, se generan sus 5 pagos (semanas 0/2/4/6/8) y se ocupa su lugar.
+- **Pagos 2-5 (cron horario)** — cerca de cada vencimiento genera una liga de Stripe y se la manda por correo. Las transferencias que llegan a su CLABE se registran solas.
+- **Certificados** — PDF generado desde una plantilla HTML (`assets/certificado/`) y enviado por correo con liga de descarga.
+- **Calendario de Outlook** — una lista de recordatorios (planeación, contacto con alumnos, Teams, examen, certificados…) que se crea como eventos en los calendarios configurados para cada grupo, con su nombre (`EXCEL-SAB-1026`).
+- **Panel `/admin`** — Grupos (alumnos y plan de pagos), Pagos, Cohortes (fechas, días, cupo), Recordatorios y Errores de envío.
 
 ## Estructura
 
 ```
 querify-backend/
-├─ db/schema.sql        Tablas (prospectos, mensajes, cohortes, alumnos, pagos)
+├─ db/schema.sql        Tablas (cohortes, alumnos, pagos, mensajes, recordatorios, eventos del calendario)
 ├─ db/seed.sql          Las 8 cohortes iniciales (curso × modalidad, sin fecha)
+├─ assets/certificado/  Plantilla HTML, firmas, logo y fuentes del certificado
 ├─ src/db.js            Config (.env) + conexión a Postgres + flags de simulación
-├─ src/templates.js     Plantillas de mensajes, incl. la liga de pago (texto + params de Meta)
-├─ src/providers.js     WhatsApp (Meta), correo (Microsoft Graph), sync (Graph), Stripe — con simulación
-├─ src/engine.js        Canal, deduplicado, alta de prospecto, motor de secuencia, inscripción y pagos
-├─ src/routes.js        POST /api/leads, /api/cohortes/:curso, /api/inscripcion + webhooks (WhatsApp, Stripe)
-├─ src/admin.js         Panel de administración (prospectos, alumnos, cohortes, errores)
+├─ src/templates.js     Correos (inscripción, pago, transferencia, certificado)
+├─ src/providers.js     Correo y calendario (Microsoft Graph), Stripe, WhatsApp — con simulación
+├─ src/engine.js        Inscripción, alumnos, pagos, transferencias, grupos y certificados
+├─ src/calendario.js    Recordatorios de cada grupo en Outlook
+├─ src/certificados.js  Generación del PDF del certificado
+├─ src/routes.js        /api/cohortes/:curso, /api/inscripcion, /certificados/:token, /webhook/stripe
+├─ src/admin.js         Panel de administración
 ├─ src/server.js        Arranque (Express, cron, init de la base)
 └─ scripts/             hash-password.js · db-init.js
 ```
 
 ---
 
-## Correr en local (5 minutos, modo simulación)
+## Correr en local (modo simulación)
 
 Necesitas **Node 18+** y **PostgreSQL**. Si no tienes Postgres a la mano, lo más rápido es Docker:
 
@@ -48,6 +52,7 @@ cp .env.example .env
 # En .env pon al menos:
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/querify
 #   STATIC_DIR=../querify-web   (para servir el sitio junto al backend)
+#   CHROME_PATH=...             (Chrome instalado, para generar certificados)
 
 npm install
 npm start
@@ -57,29 +62,7 @@ Abre:
 - Sitio: **http://localhost:3000**
 - Panel: **http://localhost:3000/admin** — usuario `admin`, contraseña `querify` (fallback de demo; ver seguridad abajo).
 
-Envía el formulario del sitio y aparecerá el prospecto en el panel, con la bienvenida "simulada" en su timeline (y en la consola del servidor).
-
-### Probar la secuencia sin esperar horas
-
-En `.env`, baja los umbrales y el cron para ver los mensajes en minutos:
-
-```
-SEQ_STEP1_HOURS=0.02
-SEQ_STEP2_HOURS=0.04
-SEQ_STEP3_HOURS=0.06
-CRON_SCHEDULE=* * * * *
-```
-
-(Cada `0.02 h` ≈ 72 s. Con eso, en un par de minutos verás recordatorio → valor → cierre en el timeline.)
-
----
-
-## Conectar el sitio (frontend)
-
-Dos formas:
-
-1. **Todo junto (más simple):** deja `STATIC_DIR=../querify-web`. El backend sirve el sitio, la API y el panel desde un solo servicio. En el sitio, deja `LEADS_ENDPOINT = "/api/leads"` en `assets/js/app.js`.
-2. **Separado:** sitio en Netlify/Cloudflare + backend en Railway/Render. En `app.js` pon `LEADS_ENDPOINT = "https://tu-backend.up.railway.app/api/leads"` y agrega ese dominio del sitio a `CORS_ORIGINS` en el backend.
+Sin Stripe, "Apartar mi lugar" crea al alumno de inmediato, como si el pago 1 se hubiera confirmado.
 
 ---
 
@@ -94,62 +77,40 @@ npm run hash -- "tu-contraseña-segura"
 
 ---
 
-## Poner los envíos en real
+## Poner las integraciones en real
 
-### WhatsApp (Meta Cloud API directa)
-1. Crea una app en Meta for Developers y agrega el producto **WhatsApp**. Obtén el **Phone Number ID** y un **token**.
-2. Da de alta las 6 **plantillas** (`bienvenida`, `recordatorio`, `valor`, `cierre`, `pago`, `inscripcion` — el contenido está en `src/templates.js`) en el idioma `es_MX`. Como algunas mencionan precio/promoción, es probable que Meta clasifique esas como **Marketing** y las demás como **Utility**.
-3. En `.env`: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, y los nombres `TPL_*` que hayas usado.
-4. Configura el **webhook** en Meta apuntando a `https://tu-backend/webhook`, con el `WHATSAPP_VERIFY_TOKEN` que pusiste, y suscríbete al campo `messages`.
+### Correo y calendario (Microsoft Graph)
 
-> Nota MX: WhatsApp usa el formato internacional (lada país + número). El webhook empata por el sufijo del número, así que tolera el prefijo `1` histórico de México.
+El correo se envía con `POST /users/{buzón}/sendMail` como el buzón de `MAIL_FROM`, y los recordatorios se crean en los calendarios de `CALENDARIO_BUZONES`. Las dos cosas usan la misma app de Entra ID.
 
-### Correo (respaldo, vía Microsoft Graph)
-
-El correo se envía mediante `POST /users/{buzón}/sendMail` de **Microsoft Graph**, como un **buzón compartido** (ej. `noreply@tudominio.com` o `noreply@tuempresa.onmicrosoft.com`). Reutiliza la misma app y el mismo token que la bitácora de Excel/SharePoint — una sola credencial para ambas cosas.
-
-1. **Buzón compartido**: en el admin center de Microsoft 365 → **Buzones compartidos** → **Agregar un buzón compartido**. No requiere licencia ni contraseña propia.
-2. **Registrar la app**: Entra ID → **Registros de aplicaciones** → **Nuevo registro** (solo tu organización, sin URI de redirección). Copia `Id. de aplicación (cliente)` → `GRAPH_CLIENT_ID` e `Id. de directorio (inquilino)` → `GRAPH_TENANT_ID`.
-3. **Secreto de cliente**: en la app → **Certificados y secretos** → **Nuevo secreto de cliente**. Copia el **valor** al momento (solo se muestra una vez) → `GRAPH_CLIENT_SECRET`.
-4. **Permisos de API**: **Agregar un permiso** → **Microsoft Graph** → **Permisos de aplicación** → `Mail.Send` (y `Files.ReadWrite.All` si vas a usar la bitácora). Luego **Conceder consentimiento de administrador** — sin esto los permisos no funcionan aunque aparezcan en la lista.
-5. **(Recomendado) Restringir el alcance**: por default `Mail.Send` permite enviar como *cualquier* buzón del tenant. Para limitarlo solo al buzón `noreply@...`, desde PowerShell (módulo `ExchangeOnlineManagement`):
-   ```powershell
-   Connect-ExchangeOnline
-   New-ApplicationAccessPolicy -AppId "<GRAPH_CLIENT_ID>" -PolicyScopeGroupId "noreply@tudominio.com" -AccessRight RestrictAccess -Description "Solo puede enviar como noreply"
-   ```
-6. **`.env`**: llena `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` y `MAIL_FROM` (solo la dirección, sin `"Nombre <correo>"` — el nombre para mostrar lo controla el propio buzón).
-
-### Bitácora en Excel/SharePoint (opcional)
-Usa la misma app de Graph de arriba (con el permiso `Files.ReadWrite.All`). Crea un `.xlsx` en SharePoint con una **tabla** llamada `Prospectos`, y llena `GRAPH_DRIVE_ID`, `GRAPH_WORKBOOK_ITEM_ID` y `GRAPH_TABLE_NAME` en `.env`. Si dejas estas variables vacías, la sincronización simplemente se omite (no bloquea nada).
+1. **Registrar la app**: Entra ID → **Registros de aplicaciones** → **Nuevo registro** (solo tu organización, sin URI de redirección). Copia `Id. de aplicación (cliente)` → `GRAPH_CLIENT_ID` e `Id. de directorio (inquilino)` → `GRAPH_TENANT_ID`.
+2. **Secreto de cliente**: en la app → **Certificados y secretos** → **Nuevo secreto de cliente**. Copia el **valor** al momento (solo se muestra una vez) → `GRAPH_CLIENT_SECRET`.
+3. **Permisos de API**: **Agregar un permiso** → **Microsoft Graph** → **Permisos de aplicación** → `Mail.Send` y `Calendars.ReadWrite`. Luego **Conceder consentimiento de administrador**: sin esto los permisos no funcionan aunque aparezcan en la lista.
+4. **`.env`**: `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `MAIL_FROM` (solo la dirección) y `CALENDARIO_BUZONES` (buzones separados por coma).
 
 ### Pagos (Stripe)
 
-Sin `STRIPE_SECRET_KEY`, la inscripción corre en modo simulación: `/api/inscripcion` crea al alumno de inmediato (como si el pago 1 ya estuviera confirmado) y los recordatorios de los pagos 2-5 quedan marcados "simulado" en el timeline del alumno — se marcan como pagados a mano desde `/admin/alumnos` (botón "Marcar pagado", método `manual`), útil también para cuando alguien transfiere fuera de Stripe en producción.
+1. **Llaves de API**: Dashboard → **Desarrolladores** → **Claves de API**. Copia la **clave secreta** → `STRIPE_SECRET_KEY`.
+2. **Transferencias**: activa **Transferencias bancarias** en Configuración → Métodos de pago.
+3. **Webhook**: Dashboard → **Desarrolladores** → **Webhooks** → endpoint `https://tu-backend/webhook/stripe` con los eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded` y `customer_cash_balance_transaction.created`. Copia el **secreto de firma** (`whsec_...`) → `STRIPE_WEBHOOK_SECRET`.
+4. En `.env`: `STRIPE_CURRENCY` (default `mxn`), `PAGO_MONTO_MXN` (default `500`) y `PUBLIC_BASE_URL` con el dominio real (para las ligas que arma el cron).
+5. **Probar en local**: con el [Stripe CLI](https://stripe.com/docs/stripe-cli), `stripe listen --forward-to localhost:3000/webhook/stripe`. En modo de prueba, la ficha del alumno tiene un botón "Simular transferencia".
 
-Para activar los pagos reales:
-
-1. Crea una cuenta en [Stripe](https://dashboard.stripe.com/register) (o usa una existente). Para probar sin dinero real, mantente en modo **Test** (interruptor arriba a la derecha del dashboard).
-2. **Llaves de API**: Dashboard → **Desarrolladores** → **Claves de API**. Copia la **clave secreta** → `STRIPE_SECRET_KEY`.
-3. **Webhook**: Dashboard → **Desarrolladores** → **Webhooks** → **Agregar endpoint**. URL: `https://tu-backend/webhook/stripe`. Evento a escuchar: `checkout.session.completed`. Copia el **secreto de firma** (`whsec_...`) → `STRIPE_WEBHOOK_SECRET`.
-4. En `.env`: llena `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CURRENCY` (default `mxn`) y `PAGO_MONTO_MXN` (default `500`). Pon `PUBLIC_BASE_URL` con el dominio real del backend (se usa para las URLs de éxito/cancelado cuando el cron cobra los pagos 2-5, donde no hay una petición HTTP de la que derivarlas).
-5. **Probar el webhook en local** (antes de desplegar): con el [Stripe CLI](https://stripe.com/docs/stripe-cli), `stripe listen --forward-to localhost:3000/webhook/stripe` — te da un `whsec_...` temporal para tu `.env` local.
-6. (Opcional) Da de alta las plantillas de WhatsApp `TPL_PAGO` (link de pago de los pagos 2-5) y `TPL_INSCRIPCION` (confirmación al apartar el lugar) — contenido en `src/templates.js` — para que se puedan mandar por WhatsApp además de correo.
-
-> Nota: al confirmarse un pago vía webhook, si dos personas pagan casi al mismo tiempo por el último lugar de una cohorte, `lugares_ocupados` puede superar `cupo_maximo` por 1 en ese caso extremo — se prefiere honrar un pago ya recibido a rechazarlo. Revísalo manualmente si llega a pasar (poco probable con cupos de 10).
+> Si dos personas pagan casi al mismo tiempo por el último lugar de un grupo, `lugares_ocupados` puede superar `cupo_maximo` por 1: se prefiere honrar un pago ya recibido a rechazarlo.
 
 ---
 
-## Desplegar en Railway (recomendado para el cron)
+## Desplegar en Railway
 
-1. Sube este repo a GitHub y crea un proyecto en Railway desde el repo.
-2. Agrega el plugin **PostgreSQL** — Railway inyecta `DATABASE_URL` automáticamente.
-3. Variables: copia las de `.env` (menos `DATABASE_URL`). Pon `NODE_ENV=production`.
-4. Railway ejecuta `npm start`. Al arrancar, el backend crea las tablas solo.
+1. Crea un proyecto en Railway desde el repo y agrega el plugin **PostgreSQL** (inyecta `DATABASE_URL`).
+2. Variables: copia las de `.env` (menos `DATABASE_URL`). Pon `NODE_ENV=production`.
+3. Railway ejecuta `npm start`. Al arrancar, el backend aplica `db/schema.sql` solo (también en cada deploy).
+4. Si el deploy automático desde GitHub no dispara: `railway up --service querify-backend --ci` desde la raíz del repo.
 
-**Railway vs Render:** el cron necesita que el servicio esté siempre activo. En Render, el plan gratuito de *Web Service* se suspende por inactividad y el cron no correría de forma fiable; usa un plan que no duerma o el **Cron Job** de Render por separado. En Railway no se suspende (pagas por uso).
+El cron horario necesita que el servicio no se duerma; por eso Railway y no el plan gratuito de Render.
 
 ---
 
 ## Variables de entorno
 
-Todas están documentadas en **`.env.example`**. Lo que dejes vacío corre en modo simulación (WhatsApp/correo) u omitido (sync), sin romper el flujo.
+Todas están documentadas en **`.env.example`**. Lo que dejes vacío corre en modo simulación, sin romper el flujo.

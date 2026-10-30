@@ -74,7 +74,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   const banner = config.admin.passHash ? '' :
     `<div class="warn">⚠ Estás usando la contraseña de demo. Genera un hash con <code>npm run hash -- "tu-clave"</code> y ponlo en <code>ADMIN_PASS_HASH</code>.</div>`;
   const bannerPausa = config.automatizacionPausada
-    ? `<div class="warn">⏸ Automatización pausada — no se manda bienvenida, recordatorio/valor/cierre ni recordatorios de pago. La confirmación de inscripción al pagar sí sigue activa. Quita <code>AUTOMATIZACION_PAUSADA</code> en Railway para reanudar.</div>` : '';
+    ? `<div class="warn">⏸ Automatización pausada — no se mandan los recordatorios de pago. La confirmación de inscripción al pagar sí sigue activa. Quita <code>AUTOMATIZACION_PAUSADA</code> en Railway para reanudar.</div>` : '';
 
   // `chrome` apaga TODO (topbar + menú) — solo para /login. Cualquier otra
   // página autenticada siempre trae el topbar: el botón de "volver" (cuando
@@ -211,8 +211,6 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .li-right{text-align:right;flex:0 0 auto;font-size:12.5px;color:var(--muted)}
 
   .tag{display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-weight:600;white-space:nowrap}
-  .tag.activa{color:var(--accent-ink);border-color:var(--accent-line);background:var(--accent-soft)}
-  .tag.finalizada{color:var(--muted-2)}
   .tag.ok{color:var(--ok-ink);border-color:var(--ok-line);background:var(--ok-soft)}
   .tag.bad{color:var(--bad-ink);border-color:var(--bad-line);background:var(--bad-soft)}
   .tag.whatsapp{color:var(--ok-ink);border-color:var(--ok-line);background:var(--ok-soft)}
@@ -252,13 +250,6 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
 
   .kv{display:grid;grid-template-columns:120px 1fr;gap:9px 12px;font-size:14px}
   .kv .k{color:var(--muted);font-size:12.5px;font-weight:600;padding-top:2px}
-  .timeline{list-style:none;padding:0;margin:0}
-  .timeline li{border-left:2px solid var(--line);padding:0 0 16px 16px;margin-left:5px;position:relative}
-  .timeline li::before{content:"";position:absolute;left:-6px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--accent-strong);border:2px solid var(--surface)}
-  .timeline li.fallido::before{background:var(--bad)}
-  .timeline li.entrante::before{background:var(--ok)}
-  .timeline .meta{font-size:12px;color:var(--muted)}
-  .timeline .body{margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;color:var(--text);line-height:1.5}
   .st{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
   .st.enviado{color:var(--ok-ink);background:var(--ok-soft)}
   .st.simulado{color:var(--warn-ink);background:var(--warn-soft)}
@@ -373,135 +364,19 @@ router.post('/login', async (req, res) => {
 
 router.get('/logout', (req, res) => { req.session.destroy(() => res.redirect('/admin/login')); });
 
-/* --------------------------- lista de prospectos ---------------------------
-   Ya no está en el menú (ver ESTADO.md, 15 oct 2026 — los prospectos ahora
-   se llevan a mano en WhatsApp Business) pero la ruta se deja intacta: los
-   datos históricos siguen aquí y /admin/prospecto/:id sigue funcionando
-   (ej. para revisar el timeline de alguien que sí alcanzó a quedar
-   registrado antes del cambio). */
-router.get('/', requireAuth, async (req, res) => {
-  const { estado = '', curso = '' } = req.query;
-  const cond = [], params = [];
-  if (estado) { params.push(estado); cond.push(`estado_secuencia = $${params.length}`); }
-  if (curso) { params.push(curso); cond.push(`curso = $${params.length}`); }
-  const where = cond.length ? `WHERE ${cond.join(' AND ')}` : '';
-  const { rows } = await query(`SELECT * FROM prospectos ${where} ORDER BY fecha_registro DESC`, params);
-
-  const opt = (v, cur, label) => `<option value="${v}"${cur === v ? ' selected' : ''}>${label}</option>`;
-  const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python', 'Aún no decido'];
-  const filtros = `<form class="filters" method="get">
-      <select name="estado">${opt('', estado, 'Todos los estados')}${opt('activa', estado, 'Activa')}${opt('finalizada', estado, 'Finalizada')}</select>
-      <select name="curso">${opt('', curso, 'Todos los cursos')}${cursos.map(c => opt(c, curso, c)).join('')}</select>
-      <button class="btn ghost" type="submit">Filtrar</button>
-      ${(estado || curso) ? '<a class="btn ghost" href="/admin">Limpiar</a>' : ''}
-    </form>`;
-
-  const filas = rows.map(p => `<tr>
-      <td><a href="/admin/prospecto/${p.id}"><b>${esc(p.nombre)}</b></a></td>
-      <td>${esc(p.curso)}</td>
-      <td>${p.telefono ? esc(p.telefono_pais + ' ' + p.telefono) : '<span class="pill">—</span>'}</td>
-      <td>${p.correo ? esc(p.correo) : '<span class="pill">—</span>'}</td>
-      <td><span class="tag ${p.canal}">${p.canal}</span></td>
-      <td>${p.paso_actual} / 3</td>
-      <td><span class="tag ${p.estado_secuencia}">${p.estado_secuencia}</span></td>
-      <td class="pill">${fmt(p.fecha_registro)}</td>
-      <td class="pill">${fmt(p.fecha_ultimo_mensaje)}</td>
-    </tr>`).join('');
-
-  const tabla = rows.length ? `<div class="table-wrap"><table>
-    <thead><tr><th>Nombre</th><th>Curso</th><th>WhatsApp</th><th>Correo</th><th>Canal</th><th>Paso</th><th>Estado</th><th>Registro</th><th>Últ. mensaje</th></tr></thead>
-    <tbody>${filas}</tbody></table></div>` : '<div class="empty">Aún no hay prospectos.</div>';
-
-  res.send(layout('Prospectos', `<h1>Prospectos</h1><p class="sub">${rows.length} registro(s) — histórico, ya no se alimenta del sitio.</p>${filtros}${tabla}`, { back: '/admin/alumnos' }));
-});
-
-/* --------------------------- detalle de prospecto --------------------------- */
-router.get('/prospecto/:id', requireAuth, async (req, res) => {
-  const { rows } = await query(`SELECT * FROM prospectos WHERE id = $1`, [req.params.id]);
-  const p = rows[0];
-  if (!p) return res.status(404).send(layout('No encontrado', '<div class="empty">Prospecto no encontrado.</div>', { back: '/admin' }));
-
-  const msgs = (await query(`SELECT * FROM mensajes WHERE prospecto_id = $1 ORDER BY created_at ASC`, [req.params.id])).rows;
-  const tl = msgs.length ? `<ul class="timeline">${msgs.map(m => `<li class="${m.estado === 'fallido' ? 'fallido' : m.tipo === 'entrante' ? 'entrante' : ''}">
-      <div class="meta">${fmt(m.created_at)} · ${esc(m.tipo)} · ${esc(m.canal)} <span class="st ${m.estado}">${m.estado}</span></div>
-      <div class="body">${esc(m.error ? '⚠ ' + m.error : m.contenido)}</div></li>`).join('')}</ul>`
-    : '<p class="sub">Sin mensajes todavía.</p>';
-
-  const activa = p.estado_secuencia === 'activa';
-  const aviso = req.query.enviado ? `<p class="pill ok">✓ Mensaje mandado.</p>`
-    : req.query.error ? `<p class="pill bad">✗ No se pudo mandar: ${esc(req.query.error)}</p>` : '';
-  const responder = p.telefono ? `
-      <div class="card"><h2 style="margin-top:0">Responder por WhatsApp</h2>
-        <form method="post" action="/admin/prospecto/${p.id}/enviar-mensaje">
-          <textarea name="texto" rows="3" placeholder="Escribe tu respuesta..." required></textarea>
-          <button class="btn" type="submit" style="margin-top:10px">Mandar</button>
-        </form>
-      </div>` : '';
-  res.send(layout(p.nombre, `
-    <h1>${esc(p.nombre)}</h1>
-    <p class="sub">Registrado el ${fmt(p.fecha_registro)} · origen: ${esc(p.origen)}</p>
-    ${aviso}
-    <div class="grid2">
-      <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
-        <div class="k">Curso</div><div>${esc(p.curso)}</div>
-        <div class="k">WhatsApp</div><div>${p.telefono ? esc(p.telefono_pais + ' ' + p.telefono) : '—'}</div>
-        <div class="k">Correo</div><div>${p.correo ? esc(p.correo) : '—'}</div>
-        <div class="k">Canal activo</div><div><span class="tag ${p.canal}">${p.canal}</span></div>
-      </div></div>
-      <div class="card"><h2 style="margin-top:0">Secuencia</h2><div class="kv">
-        <div class="k">Estado</div><div><span class="tag ${p.estado_secuencia}">${p.estado_secuencia}</span></div>
-        <div class="k">Paso</div><div>${p.paso_actual} / 3</div>
-        <div class="k">Inicio secuencia</div><div>${fmt(p.fecha_inicio_secuencia)}</div>
-        <div class="k">Últ. mensaje</div><div>${fmt(p.fecha_ultimo_mensaje)}</div>
-        <div class="k">Últ. respuesta</div><div>${fmt(p.fecha_ultimo_entrante)}</div>
-      </div>
-      <div class="actions">
-        ${activa ? `<form method="post" action="/admin/prospecto/${p.id}/responder"><button class="btn ghost" type="submit">Marcar como respondió</button></form>
-        <form method="post" action="/admin/prospecto/${p.id}/pausar"><button class="btn danger" type="submit">Pausar / detener</button></form>`
-        : '<span class="pill">Secuencia finalizada. El seguimiento continúa manualmente.</span>'}
-      </div></div>
-    </div>
-    ${responder}
-    <h2>Historial de mensajes</h2><div class="card">${tl}</div>`,
-    { back: '/admin' }));
-});
-
-router.post('/prospecto/:id/enviar-mensaje', requireAuth, async (req, res) => {
-  const texto = (req.body?.texto || '').toString().trim();
-  if (!texto) return res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent('Escribe algo primero.')}`);
-  const { rows } = await query(`SELECT * FROM prospectos WHERE id = $1`, [req.params.id]);
-  const p = rows[0];
-  if (!p) return res.status(404).send(layout('No encontrado', '<div class="empty">Prospecto no encontrado.</div>', { back: '/admin' }));
-  const r = await engine.responderManual(p, texto);
-  if (r.ok) return res.redirect(`/admin/prospecto/${req.params.id}?enviado=1`);
-  res.redirect(`/admin/prospecto/${req.params.id}?error=${encodeURIComponent(r.error || 'error desconocido')}`);
-});
-
-router.post('/prospecto/:id/responder', requireAuth, async (req, res) => {
-  await query(`UPDATE prospectos SET estado_secuencia = 'finalizada' WHERE id = $1`, [req.params.id]);
-  await engine.registrarMensaje(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Marcado como "respondió" desde el panel. Secuencia detenida.' });
-  res.redirect(`/admin/prospecto/${req.params.id}`);
-});
-
-router.post('/prospecto/:id/pausar', requireAuth, async (req, res) => {
-  await query(`UPDATE prospectos SET estado_secuencia = 'finalizada' WHERE id = $1`, [req.params.id]);
-  await engine.registrarMensaje(req.params.id, { tipo: 'sistema', canal: 'sistema', estado: 'nota', contenido: 'Secuencia pausada/detenida manualmente desde el panel.' });
-  res.redirect(`/admin/prospecto/${req.params.id}`);
-});
+// La raíz del panel lleva a Grupos (antes era la lista de prospectos,
+// retirada junto con la tabla el 29 oct 2026).
+router.get('/', requireAuth, (req, res) => res.redirect('/admin/alumnos'));
 
 /* ------------------------------ errores de envío ------------------------------ */
 router.get('/errores', requireAuth, async (req, res) => {
-  // LEFT JOIN a prospectos Y alumnos — un mensaje fallido pertenece a uno
-  // de los dos, nunca a ambos (ver schema.sql), así que COALESCE arma el
-  // nombre sin importar cuál sea, y el link se arma aparte en el render.
   const { rows } = await query(
-    `SELECT m.*, COALESCE(p.nombre, a.nombre) AS nombre
+    `SELECT m.*, a.nombre
      FROM mensajes m
-     LEFT JOIN prospectos p ON p.id = m.prospecto_id
-     LEFT JOIN alumnos a ON a.id = m.alumno_id
+     JOIN alumnos a ON a.id = m.alumno_id
      WHERE m.estado = 'fallido' ORDER BY m.created_at DESC`);
   const lista = rows.length ? `<div class="list">${rows.map(m => `
-    <a class="list-item" href="${m.alumno_id ? `/admin/alumno/${m.alumno_id}` : `/admin/prospecto/${m.prospecto_id}`}">
+    <a class="list-item" href="/admin/alumno/${m.alumno_id}">
       <div class="li-top">
         <div><div class="li-title">${esc(m.nombre)}</div>
           <div class="li-meta">${esc(m.tipo)} · ${esc(m.canal)}</div>

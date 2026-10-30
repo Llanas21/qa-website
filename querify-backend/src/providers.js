@@ -1,4 +1,4 @@
-// src/providers.js — integraciones externas (WhatsApp, correo, Graph)
+// src/providers.js — integraciones externas (correo y calendario por Graph, Stripe, WhatsApp)
 // Todas degradan a "simulación" si faltan credenciales, para poder probar el flujo completo.
 const crypto = require('crypto');
 const { config } = require('./db');
@@ -42,38 +42,8 @@ async function sendWhatsAppTemplate({ pais, numero, tipo, vars }) {
   }
 }
 
-// Envía un mensaje de TEXTO LIBRE (no plantilla) — para que el operador conteste a
-// mano desde el panel admin. WhatsApp solo permite esto dentro de las 24h después
-// del último mensaje que la persona mandó (si no, Meta rechaza con un error claro,
-// código típico #131047 "re-engagement message" — se deja pasar tal cual en `error`).
-async function sendWhatsAppTexto({ pais, numero, texto }) {
-  const to = `${(pais || '').replace('+', '')}${numero || ''}`;
-
-  if (config.simulate.whatsapp) {
-    console.info(`[SIMULA WhatsApp → ${to}] texto="${texto}"`);
-    return { ok: true, estado: 'simulado' };
-  }
-  try {
-    const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${config.whatsapp.phoneNumberId}/messages`;
-    const body = { messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } };
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.whatsapp.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = data?.error?.message || `HTTP ${res.status}`;
-      return { ok: false, estado: 'fallido', error: `WhatsApp: ${msg}` };
-    }
-    return { ok: true, estado: 'enviado' };
-  } catch (err) {
-    return { ok: false, estado: 'fallido', error: `WhatsApp: ${err.message}` };
-  }
-}
-
 /* --------------------------- Autenticación Graph ------------------------------ */
-// Compartida por correo (sendMail) y por la bitácora de sync a Excel/SharePoint.
+// Compartida por correo (sendMail) y el calendario de Outlook.
 let graphToken = { value: null, exp: 0 };
 async function getGraphToken() {
   if (graphToken.value && Date.now() < graphToken.exp) return graphToken.value;
@@ -132,37 +102,6 @@ async function sendEmail({ to, tipo, vars }) {
     return { ok: true, estado: 'enviado' };
   } catch (err) {
     return { ok: false, estado: 'fallido', error: `Correo: ${err.message}` };
-  }
-}
-
-/* -------------------- Bitácora en Excel/SharePoint (Graph) -------------------- */
-// Best-effort: nunca bloquea el alta del prospecto. Agrega una fila a una tabla de Excel.
-async function syncProspecto(p) {
-  if (config.simulate.sync) {
-    console.info(`[OMITE sync SharePoint] prospecto #${p.id} (${p.nombre})`);
-    return;
-  }
-  try {
-    const token = await getGraphToken();
-    const base = `https://graph.microsoft.com/v1.0/drives/${config.graph.driveId}/items/${config.graph.workbookItemId}` +
-                 `/workbook/tables/${encodeURIComponent(config.graph.tableName)}/rows`;
-    // Orden de columnas esperado en la tabla de Excel:
-    const fila = [[
-      p.id, p.fecha_registro, p.nombre, p.curso,
-      p.telefono ? `${p.telefono_pais} ${p.telefono}` : '', p.correo || '',
-      p.canal, p.estado_secuencia, p.paso_actual,
-    ]];
-    const res = await fetch(base, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: fila }),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      console.warn(`[sync SharePoint] no se pudo agregar fila: ${res.status} ${t}`);
-    }
-  } catch (err) {
-    console.warn(`[sync SharePoint] error (no bloquea): ${err.message}`);
   }
 }
 
@@ -385,7 +324,7 @@ function verificarEventoStripe(rawBody, firma) {
 }
 
 module.exports = {
-  sendWhatsAppTemplate, sendWhatsAppTexto, sendEmail, syncProspecto, crearCheckoutSession, verificarEventoStripe,
+  sendWhatsAppTemplate, sendEmail, crearCheckoutSession, verificarEventoStripe,
   crearClabe, clienteStripe, datosTransferencia, estadoCheckout, transferenciasAbiertas, cancelarTransferenciasAbiertas,
   saldoTransferencias, cobrarDeSaldo, stripeEnPrueba, simularTransferencia,
   crearEventoCalendario, actualizarEventoCalendario, borrarEventoCalendario,
