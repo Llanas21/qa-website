@@ -39,8 +39,15 @@ const ICO = {
   menu: '<path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>',
   cerrar: '<path d="M18 6 6 18"/><path d="M6 6l12 12"/>',
   mas: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  copiar: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  listo: '<path d="M20 6 9 17l-5-5"/>',
 };
 const svg = (nombre, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${ICO[nombre]}</svg>`;
+
+// Texto con un iconito al lado para copiarlo al portapapeles (lo maneja el
+// script de [data-copiar] de la página que lo use).
+const copiable = (texto, html = esc(texto)) =>
+  `<span class="copiable"><span>${html}</span><button class="copiar" type="button" data-copiar="${esc(texto)}" aria-label="Copiar" title="Copiar">${svg('copiar', 16)}</button></span>`;
 
 // Botón flotante (FAB) + hoja/modal que se desliza desde abajo — patrón
 // reutilizable para "agregar algo" (alumno, cohorte...) sin ocupar espacio
@@ -252,6 +259,13 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
 
   .kv{display:grid;grid-template-columns:120px 1fr;gap:9px 12px;font-size:14px}
   .kv .k{color:var(--muted);font-size:12.5px;font-weight:600;padding-top:2px}
+  .copiable{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:middle}
+  .copiable > span{overflow-wrap:anywhere}
+  .copiar{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;
+    border:0;border-radius:999px;background:none;color:var(--muted);cursor:pointer}
+  .copiar:hover{background:var(--surface-2);color:var(--text)}
+  .copiar svg{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .copiar.hecho{color:var(--ok, #15803d)}
   .st{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600;white-space:nowrap}
   .st.enviado{color:var(--ok-ink);background:var(--ok-soft)}
   .st.simulado{color:var(--warn-ink);background:var(--warn-soft)}
@@ -837,17 +851,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
           <input name="monto" type="number" min="1" step="1" value="${config.pagos.monto}" style="max-width:130px" aria-label="Monto en MXN">
           <button class="btn ghost" type="submit">Simular transferencia</button>
         </div>
-      </form>` : ''}
-      <script>
-        document.querySelectorAll('[data-copiar]').forEach(function (b) {
-          b.addEventListener('click', function () {
-            var t = b.textContent;
-            navigator.clipboard.writeText(b.dataset.copiar).then(function () {
-              b.textContent = '✓ Copiado'; setTimeout(function () { b.textContent = t; }, 1600);
-            });
-          });
-        });
-      </script>` : `
+      </form>` : ''}` : `
       <p class="sub" style="margin:0 0 12px">Genera una CLABE solo para este alumno: lo que transfiera ahí se marca pagado automáticamente.</p>
       <form method="post" action="/admin/alumno/${a.id}/clabe" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Generando…'">
         <button class="btn" type="submit">Generar CLABE</button>
@@ -855,12 +859,12 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     </div>`;
 
   res.send(layout(a.nombre, `
-    <h1>${esc(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
+    <h1>${copiable(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
     <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)}${a.fecha_baja ? ` · baja el ${fmt(a.fecha_baja)}` : ''}</p>
     ${aviso}
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
-      <div class="k">WhatsApp</div><div>${a.whatsapp ? esc(a.whatsapp_pais + ' ' + a.whatsapp) : '—'}</div>
-      <div class="k">Correo</div><div>${a.correo ? esc(a.correo) : '—'}</div>
+      <div class="k">WhatsApp</div><div>${a.whatsapp ? copiable(`${a.whatsapp_pais || ''} ${a.whatsapp}`.trim()) : '—'}</div>
+      <div class="k">Correo</div><div>${a.correo ? copiable(a.correo) : '—'}</div>
     </div>
       <div class="actions">
         ${editar}
@@ -874,7 +878,21 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     </form>` : ''}
     <div class="pagos">${filasPago}</div>
     ${transferencia}
-    ${certificado}`,
+    ${certificado}
+    <script>
+      // Botones de copiar: los de texto (CLABE, mensaje) cambian su texto;
+      // los iconitos de al lado del nombre/WhatsApp/correo cambian a una palomita.
+      document.querySelectorAll('[data-copiar]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var antes = b.innerHTML, icono = b.classList.contains('copiar');
+          navigator.clipboard.writeText(b.dataset.copiar).then(function () {
+            if (icono) { b.innerHTML = '${svg('listo', 16)}'; b.classList.add('hecho'); }
+            else b.textContent = '✓ Copiado';
+            setTimeout(function () { b.innerHTML = antes; b.classList.remove('hecho'); }, 1600);
+          });
+        });
+      });
+    </script>`,
     { back: `/admin/grupo/${a.cohorte_id}`, section: 'alumnos' }));
 });
 
