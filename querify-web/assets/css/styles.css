@@ -22,6 +22,8 @@
   --accent-line:#C9DCFB;  /* borde de tinte */
   --on-accent:#FFFFFF;    /* texto sobre botón azul */
   --ok:#16A34A;
+  --whatsapp:#1DA851;     /* botón de WhatsApp: verde de la marca, un tono más oscuro que #25D366 para que el texto blanco se lea */
+  --whatsapp-hover:#178F44;
 
   /* --- Tipografía (Poppins en todo) --- */
   --font-display:'Poppins', system-ui, -apple-system, sans-serif;
@@ -97,6 +99,8 @@ ul{margin:0;padding:0;list-style:none}
 .btn-ghost:hover{border-color:var(--ink);background:var(--surface)}
 .btn-ghost.on-dark{color:var(--text);border-color:var(--line-2)}
 .btn-ghost.on-dark:hover{border-color:var(--ink);background:var(--surface)}
+.btn-whatsapp{background:var(--whatsapp);color:#fff;border-color:transparent;box-shadow:var(--shadow-sm)}
+.btn-whatsapp:hover{background:var(--whatsapp-hover)}
 .btn-lg{--pad:17px 32px;font-size:16.5px}
 .btn-block{width:100%}
 .btn .ico{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
