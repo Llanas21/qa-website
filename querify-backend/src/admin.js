@@ -94,7 +94,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
 
   const topbar = chrome ? `<header class="topbar">
       ${back ? `<a class="iconbtn" href="${back}" aria-label="Volver">${svg('atras', 20)}</a>`
-        : `<span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>`}
+        : `<span class="brand"><img src="/assets/img/querify-logo-completo.png" alt="Querify Analytics Academy"></span>`}
       <button class="iconbtn" id="menuBtn" aria-label="Abrir menú" aria-expanded="false" aria-controls="drawer" type="button">${svg('menu', 20)}</button>
     </header>` : '';
 
@@ -102,7 +102,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
     <div class="drawer-overlay" id="drawerOverlay"></div>
     <nav class="drawer" id="drawer" aria-hidden="true" aria-label="Menú principal">
       <div class="drawer-head">
-        <span class="brand"><img src="/assets/img/querify-logo.png" alt=""><span>Querify <b>Admin</b></span></span>
+        <span class="brand"><img src="/assets/img/querify-logo-completo.png" alt="Querify Analytics Academy"></span>
       </div>
       <div class="drawer-links">
         ${tabs.map(t => `<a href="${t.href}" class="drawer-link ${section === t.id ? 'active' : ''}">${svg(t.ico, 20)}<span>${t.label}</span></a>`).join('')}
@@ -160,9 +160,8 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
     background:var(--surface);border-bottom:1px solid var(--line);
     padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;position:sticky;top:0;z-index:10}
-  .topbar .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink);font-size:15.5px}
-  .topbar .brand img{width:26px;height:26px;display:block}
-  .topbar .brand b{font-weight:700}
+  .topbar .brand{display:flex;align-items:center}
+  .topbar .brand img{height:34px;width:auto;display:block}
   .iconbtn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;
     color:var(--muted);border:1.5px solid var(--line-2);flex:0 0 auto;background:none;cursor:pointer;padding:0;font-family:inherit}
   .iconbtn:hover{background:var(--surface-2);text-decoration:none;color:var(--text)}
@@ -178,8 +177,8 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
     box-shadow:var(--shadow-md);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
   .drawer.open{transform:translateX(0)}
   .drawer-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 14px 14px 18px;border-bottom:1px solid var(--line)}
-  .drawer-head .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink);font-size:15px}
-  .drawer-head .brand img{width:24px;height:24px}
+  .drawer-head .brand{display:flex;align-items:center}
+  .drawer-head .brand img{height:30px;width:auto;display:block}
   .drawer-links{display:flex;flex-direction:column;padding:10px}
   .drawer-link{display:flex;align-items:center;gap:13px;padding:12px 12px;border-radius:var(--r-sm);
     color:var(--muted);font-size:14.5px;font-weight:600}
@@ -263,7 +262,7 @@ function layout(title, body, { chrome = true, section = '', back = null } = {}) 
   body:has(.login-wrap){display:flex;min-height:100dvh}
   body:has(.login-wrap) .wrap{display:flex;align-items:center;width:100%;padding-top:24px;padding-bottom:24px}
   .login-wrap{max-width:360px;width:100%;margin:0 auto;padding:0 20px}
-  .login-wrap .logo{display:block;margin:0 auto 16px;width:50px;height:50px}
+  .login-wrap .logo{display:block;margin:0 auto 20px;height:60px;width:auto}
   .login-wrap h1{text-align:center}
   .login-wrap .sub{text-align:center}
   .err{color:var(--bad);font-size:13.5px;margin-top:10px}
@@ -337,8 +336,8 @@ function requireAuth(req, res, next) {
 
 router.get('/login', (req, res) => {
   res.send(layout('Entrar', `<div class="login-wrap">
-    <img class="logo" src="/assets/img/querify-logo.png" alt="">
-    <h1>Panel de Querify</h1><p class="sub">Ingresa para administrar la academia.</p>
+    <img class="logo" src="/assets/img/querify-logo-completo.png" alt="Querify Analytics Academy">
+    <h1>Panel de administración</h1><p class="sub">Ingresa para administrar la academia.</p>
     <div class="card">
       <form method="post" action="/admin/login">
         <div class="field"><label>Usuario</label><input type="text" name="user" autocomplete="username" autofocus></div>

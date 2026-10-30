@@ -12,7 +12,9 @@
 // (el correo real que recibe la persona — ver abajo).
 
 const SITIO = 'https://querifyanalytics.com';
-const LOGO = `${SITIO}/assets/img/querify-logo.png`;
+// Logo completo (la Q + "Querify Analytics / ACADEMY"), el mismo del sitio.
+// URL absoluta: el correo se abre fuera del sitio. 775x230 px.
+const LOGO = `${SITIO}/assets/img/querify-logo-completo.png`;
 
 // Mismos tokens de color que :root en querify-web/assets/css/styles.css —
 // para que el correo se vea como una extensión del sitio, no como una
@@ -127,9 +129,7 @@ function shell({ preheader = '', contenido }) {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:${T.surface};border-radius:18px;overflow:hidden;border:1px solid ${T.line}">
         <tr><td style="background:${T.surface};padding:28px 32px 22px;text-align:center;border-bottom:1px solid ${T.line}">
-          <img src="${LOGO}" width="40" height="40" alt="Querify Analytics" style="display:block;margin:0 auto 10px;border:0">
-          <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:19px;font-weight:700;color:${T.ink};letter-spacing:-0.3px;line-height:1">Querify</div>
-          <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:11px;letter-spacing:.14em;text-transform:lowercase;color:${T.muted2};margin-top:5px">analytics</div>
+          <img src="${LOGO}" width="200" height="59" alt="Querify Analytics Academy" style="display:block;margin:0 auto;border:0;width:200px;height:auto;max-width:100%">
         </td></tr>
         <tr><td style="padding:32px">
           ${contenido}
