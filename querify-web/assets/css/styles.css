@@ -109,9 +109,10 @@ ul{margin:0;padding:0;list-style:none}
 .site-header{position:sticky;top:0;z-index:60;background:var(--surface);border-bottom:1px solid var(--line)}
 .site-header .bar{display:flex;align-items:center;justify-content:space-between;height:70px}
 .brand{display:inline-flex;align-items:center;gap:11px;color:var(--ink)}
-.brand .glyph{width:48px;height:48px;flex:0 0 auto}
-.brand .wordmark{font-family:var(--font-display);font-weight:700;font-size:20px;letter-spacing:-.02em;line-height:1}
-.brand .tag{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;color:var(--muted-2);text-transform:lowercase;margin-top:3px}
+/* Logo con tipografía (Querify Analytics Academy + la Q), diseñado por el
+   usuario: una sola imagen en vez del ícono + texto en HTML (30 oct 2026). */
+.brand .logo{display:block;height:48px;width:auto;flex:0 0 auto}
+@media (min-width:961px){.brand .logo{height:58px}}
 .nav{display:flex;align-items:center;gap:30px}
 .nav a{color:var(--muted);font-size:15px;font-weight:500;transition:color .18s}
 .nav a:hover{color:var(--text)}
