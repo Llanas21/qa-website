@@ -207,7 +207,8 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
   // avisaba de verdad que su lugar quedó apartado. El alta manual puede
   // apagarlo (ej. registrar a alguien de un grupo que ya va a la mitad).
   if (enviarBienvenida) {
-    const vars = [alumno.nombre, cohorte.curso];
+    const iniciado = calendario.ymd(cohorte.fecha_inicio) < calendario.ymd(new Date());
+    const vars = [alumno.nombre, cohorte.curso, tpl.textoInscripcion(iniciado)];
     await enviarConVars({
       pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
       canal: 'correo', tipo: 'inscripcion', vars,

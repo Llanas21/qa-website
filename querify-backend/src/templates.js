@@ -48,7 +48,7 @@ En cuanto lo confirmes, tu lugar sigue asegurado sin problema. Cualquier duda, a
 
   inscripcion: `¡Hola {{1}}! 🎉 Tu lugar en el curso de {{2}} quedó apartado — recibimos tu primer pago de $500 MXN.
 
-Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.
+{{3}}
 
 ¡Bienvenido a Querify Analytics! 🙌`,
 
@@ -70,6 +70,15 @@ Transfiere el monto exacto. En cuanto llegue, tu pago se registra solo. Esta CLA
 
 Instrucciones completas: {{8}}`,
 };
+
+// Párrafo de en medio de "inscripcion" ({{3}}): cambia si el alumno entró a
+// un grupo que ya empezó (liga de inscripción del grupo, ver admin.js) —
+// ahí no tiene sentido "conforme se acerque tu primera clase".
+const siguientePaso = {
+  porIniciar: 'Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.',
+  iniciado: 'Tu grupo ya está en curso, así que tu asesor se pondrá en contacto contigo muy pronto para darte la bienvenida, ponerte al día con lo que se ha visto en clase y contarte tu horario y los detalles de tus siguientes pagos.',
+};
+const textoInscripcion = (grupoIniciado) => siguientePaso[grupoIniciado ? 'iniciado' : 'porIniciar'];
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
 const numVars = { pago: 5, inscripcion: 2, certificado: 3, transferencia: 8 };
@@ -161,7 +170,7 @@ const contenidoHtml = {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.okSoft};border-radius:10px;margin:0 0 20px"><tr><td style="padding:16px 18px">
       <p style="margin:0;font-size:15px;line-height:1.6;color:${T.okInk}">Tu lugar en el curso de <b>${esc(v[1])}</b> quedó apartado — recibimos tu primer pago de <b>$500 MXN</b>.</p>
     </td></tr></table>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">${esc(v[2] || siguientePaso.porIniciar)}</p>
     <p style="margin:0;font-size:15px;line-height:1.6;color:${T.text}">¡Bienvenido a Querify Analytics! 🙌</p>`,
 
   certificado: (v) => `
@@ -196,4 +205,4 @@ function renderHtml(tipo, vars) {
   return shell({ preheader: asuntoTxt, contenido: gen(vars) });
 }
 
-module.exports = { render, renderHtml, metaBodyParams, numVars };
+module.exports = { render, renderHtml, metaBodyParams, numVars, textoInscripcion };
