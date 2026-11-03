@@ -688,12 +688,31 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
   // Sin fecha de inicio no hay de dónde calcular el plan de pagos: antes se
   // podía dar de alta igual y los pagos quedaban con vencimiento en 1970.
   const sinFecha = !cohorte.fecha_inicio;
+  // Liga de inscripción del grupo (ver engine.grupoParaLiga): deja de servir
+  // cuando el grupo termina o se llena, así que tampoco se ofrece aquí.
+  const terminado = !!cohorte.fecha_inicio && calendario.ymd(cohorte.fecha_fin || cohorte.fecha_inicio) < calendario.ymd(new Date());
+  const ligaInscripcion = `${req.protocol}://${req.get('host')}/cursos/inscripcion.html?grupo=${cohorte.id}`;
 
   const codigo = calendario.codigoGrupo(cohorte);
   res.send(layout(codigo || `${cohorte.curso} · ${label(cohorte.modalidad)}`, `
     <h1>${codigo ? esc(codigo) : `${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span>`}</h1>
     <p class="sub">${codigo ? `${esc(cohorte.curso)} · ${label(cohorte.modalidad)} · ` : ''}Inicia ${fmtDia(cohorte.fecha_inicio)}${cohorte.fecha_fin ? ` · termina ${fmtDia(cohorte.fecha_fin)}` : ''} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
     ${sinFecha ? '<p class="pill bad">Sin fecha de inicio: asígnala en Cohortes para dar de alta alumnos.</p>' : ''}
+    ${sinFecha || sinCupo || terminado ? '' : `
+    <div class="card" style="margin-bottom:16px">
+      <p class="sub" style="margin:0 0 10px">Liga para que alguien se inscriba a este grupo aunque ya haya empezado: llena sus datos y paga el pago 1 con tarjeta o transferencia, y queda dado de alta solo.</p>
+      <button class="btn ghost" type="button" data-copiar="${esc(ligaInscripcion)}">Copiar liga de inscripción</button>
+    </div>
+    <script>
+      document.querySelectorAll('[data-copiar]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var antes = b.textContent;
+          navigator.clipboard.writeText(b.dataset.copiar).then(function () {
+            b.textContent = '✓ Copiada'; setTimeout(function () { b.textContent = antes; }, 1600);
+          });
+        });
+      });
+    </script>`}
     ${lista}
     ${sinCupo || sinFecha ? '' : fabModal({
       id: 'altaAlumno', label: 'Dar de alta un alumno', titulo: 'Dar de alta un alumno',

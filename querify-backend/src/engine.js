@@ -71,6 +71,20 @@ async function cohortesDisponibles(curso) {
   return rows;
 }
 
+// Un grupo para la "liga de inscripción" que se copia desde el panel
+// (/cursos/inscripcion.html?grupo=ID): a diferencia de cohortesDisponibles,
+// sirve aunque el grupo ya haya empezado — para inscribir a alguien tarde —
+// mientras no haya terminado y tenga cupo.
+async function grupoParaLiga(id) {
+  const { rows } = await query(
+    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados,
+            (cupo_maximo - lugares_ocupados) AS lugares_disponibles
+     FROM cohortes
+     WHERE id = $1 AND fecha_inicio IS NOT NULL AND COALESCE(fecha_fin, fecha_inicio) >= CURRENT_DATE
+       AND lugares_ocupados < cupo_maximo`, [id]);
+  return rows[0] || null;
+}
+
 async function cohortePorId(id) {
   const { rows } = await query(`SELECT * FROM cohortes WHERE id = $1`, [id]);
   return rows[0] || null;
@@ -645,7 +659,7 @@ async function revisarPagosPorVencer() {
 
 module.exports = {
   registrarMensajeAlumno,
-  cohortesDisponibles, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
+  cohortesDisponibles, grupoParaLiga, cohortePorId, iniciarInscripcion, confirmarInscripcion, altaAlumnoManual,
   confirmarPago, procesarWebhookStripe, revisarPagosPorVencer,
   subirCertificado, enviarCertificado, darDeBaja, editarAlumno, generarClabe, procesarTransferencia,
   crearCohorte, actualizarCohorte, recalcularPagosCohorte,

@@ -24,6 +24,7 @@ const PHONE_LEN = {
 /* Endpoint de la inscripción con pago (apartar lugar). */
 const COHORTES_ENDPOINT = "/api/cohortes"; // + "/" + curso
 const INSCRIPCION_ENDPOINT = "/api/inscripcion";
+const GRUPO_ENDPOINT = "/api/grupo"; // + "/" + id — liga de inscripción de un grupo (ver initInscripcionForm)
 
 document.addEventListener("DOMContentLoaded", () => {
   initMobileNav();
@@ -92,13 +93,32 @@ function initInscripcionForm() {
   // reinterpreta en la zona local del visitante y en México (UTC-6) se corre un día atrás.
   const fmtFecha = f => new Date(f).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
+  // Liga de inscripción de un grupo, copiada desde el panel (?grupo=ID): solo
+  // ofrece ese grupo, aunque ya haya empezado (para inscribir a alguien tarde),
+  // y deja fijo el curso. El sitio normal sigue mostrando solo grupos por empezar.
+  const grupoLiga = Number(new URLSearchParams(location.search).get("grupo")) || null;
+  const hoy = new Date().toISOString().slice(0, 10);
+
   async function cargarCohortes() {
     clearError(cohorteErr);
     cohortesBox.innerHTML = '<p class="sub" style="margin:0">Cargando fechas disponibles…</p>';
     try {
-      const res = await fetch(`${COHORTES_ENDPOINT}/${encodeURIComponent(cursoSelect.value)}`);
-      const data = await res.json();
-      const cohortes = (data && data.cohortes) || [];
+      let cohortes;
+      if (grupoLiga) {
+        const res = await fetch(`${GRUPO_ENDPOINT}/${grupoLiga}`);
+        const data = await res.json().catch(() => ({}));
+        if (!data.ok) {
+          cohortesBox.innerHTML = '<p class="sub" style="margin:0">Esta liga ya no está disponible (el grupo se llenó o ya terminó). Escríbenos por WhatsApp y te ayudamos.</p>';
+          return;
+        }
+        cursoSelect.value = data.cohorte.curso;
+        cursoSelect.disabled = true;
+        cohortes = [data.cohorte];
+      } else {
+        const res = await fetch(`${COHORTES_ENDPOINT}/${encodeURIComponent(cursoSelect.value)}`);
+        const data = await res.json();
+        cohortes = (data && data.cohortes) || [];
+      }
       if (!cohortes.length) {
         cohortesBox.innerHTML = '<p class="sub" style="margin:0">No hay fechas disponibles por ahora para este curso. Escríbenos por WhatsApp y te avisamos en cuanto se abra un grupo.</p>';
         return;
@@ -106,7 +126,7 @@ function initInscripcionForm() {
       cohortesBox.innerHTML = cohortes.map((c, i) => `
         <label class="cohorte-opt">
           <input type="radio" name="cohorte" value="${c.id}" ${i === 0 ? "checked" : ""}>
-          <span class="co-main"><b>${labelModalidad(c)}</b><span>${fmtFecha(c.fecha_inicio)}</span></span>
+          <span class="co-main"><b>${labelModalidad(c)}</b><span>${String(c.fecha_inicio).slice(0, 10) < hoy ? "Inició el " : ""}${fmtFecha(c.fecha_inicio)}</span></span>
           <span class="co-cupo">${c.lugares_disponibles} lugar${c.lugares_disponibles === 1 ? "" : "es"}</span>
         </label>`).join("");
     } catch (err) {
@@ -175,6 +195,7 @@ function initInscripcionForm() {
       nombre,
       curso: cursoSelect.value,
       cohorteId: Number(cohorteInput.value),
+      grupo: grupoLiga,
       whatsapp: tel ? { pais: cc, numero: tel } : null,
       correo: correo || null,
       origen: "sitio_web",

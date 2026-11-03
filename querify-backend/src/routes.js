@@ -18,6 +18,19 @@ router.get('/api/cohortes/:curso', async (req, res) => {
   }
 });
 
+/* ------------- GET /api/grupo/:id (liga de inscripción copiada del panel) ------------- */
+router.get('/api/grupo/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const cohorte = Number.isInteger(id) && id > 0 ? await engine.grupoParaLiga(id) : null;
+    if (!cohorte) return res.status(404).json({ ok: false, error: 'Este grupo ya no está disponible.' });
+    res.json({ ok: true, cohorte });
+  } catch (err) {
+    console.error('[GET /api/grupo]', err.message);
+    res.status(500).json({ ok: false, error: 'Error del servidor.' });
+  }
+});
+
 /* --------------------- POST /api/inscripcion (apartar lugar) --------------------- */
 router.post('/api/inscripcion', async (req, res) => {
   const b = req.body || {};
@@ -52,7 +65,11 @@ router.post('/api/inscripcion', async (req, res) => {
     // redirige ahí, no nuestro JS.
     const canal = 'correo';
     const urlExito = `${origin}/inscripcion-gracias.html?session_id={CHECKOUT_SESSION_ID}&canal=${canal}`;
-    const urlCancelado = `${origin}/cursos/inscripcion.html?curso=${encodeURIComponent(b.curso || '')}&cancelado=1`;
+    // Si llegó por la liga de un grupo, al cancelar vuelve a esa misma liga.
+    const grupo = Number(b.grupo);
+    const urlCancelado = Number.isInteger(grupo) && grupo > 0
+      ? `${origin}/cursos/inscripcion.html?grupo=${grupo}&cancelado=1`
+      : `${origin}/cursos/inscripcion.html?curso=${encodeURIComponent(b.curso || '')}&cancelado=1`;
 
     const r = await engine.iniciarInscripcion({
       cohorteId, nombre,
