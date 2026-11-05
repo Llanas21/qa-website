@@ -8,6 +8,7 @@
 // styles.css) para que se sienta parte de la misma marca.
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { config, query } = require('./db');
 const engine = require('./engine');
 const certificados = require('./certificados');
@@ -434,6 +435,38 @@ async function avisoCalendario() {
   return `<p class="pill ok" style="margin:0 0 14px">📅 Recordatorios al día en Outlook (${quien}).</p>`;
 }
 
+// Aviso de la conexión de Teams (ver teams.js: los alumnos se agregan
+// actuando como la cuenta conectada aquí).
+async function avisoTeams(req) {
+  if (!teams.activo()) return '';
+  const c = await teams.conexion();
+  const pill = (clase, texto, boton) => `<div class="pill ${clase}" style="margin:0 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <span>${texto}</span><a class="btn ${clase === 'ok' ? 'ghost' : ''} sm" href="/admin/teams/conectar" style="padding:7px 13px;font-size:12.5px">${boton}</a></div>`;
+  const recien = req.query.teams_conectado ? `<p class="pill ok" style="margin:0 0 10px">✓ Teams conectado.</p>` : '';
+  const fallo = req.query.teams_error ? `<p class="pill bad" style="margin:0 0 10px">✗ ${esc(req.query.teams_error)}</p>` : '';
+  if (c.conectado) return recien + pill('ok', `👥 Teams conectado como ${esc(c.usuario)}: los alumnos se agregan solos a su canal.`, 'Reconectar');
+  if (c.error) return fallo + pill('bad', `⚠ Se perdió la conexión con Teams y los alumnos no se están agregando.`, 'Conectar Teams');
+  return fallo + pill('bad', `👥 Falta conectar Teams para que los alumnos se agreguen solos a su canal.`, 'Conectar Teams');
+}
+
+// "Conectar Teams": inicio de sesión de Microsoft y regreso con el código.
+const redirectTeams = req => `${req.protocol}://${req.get('host')}/admin/teams/callback`;
+router.get('/teams/conectar', requireAuth, (req, res) => {
+  req.session.teamsState = crypto.randomBytes(16).toString('hex');
+  res.redirect(teams.urlConectar({ redirectUri: redirectTeams(req), state: req.session.teamsState }));
+});
+router.get('/teams/callback', requireAuth, async (req, res) => {
+  const volver = q => res.redirect(`/admin/cohortes?${q}`);
+  const { code, state, error_description: errorMs } = req.query;
+  if (errorMs) return volver(`teams_error=${encodeURIComponent(`Microsoft: ${String(errorMs).split('\r\n')[0]}`)}`);
+  if (!code || !state || state !== req.session.teamsState) return volver(`teams_error=${encodeURIComponent('La conexión expiró, inténtalo de nuevo.')}`);
+  delete req.session.teamsState;
+  const r = await teams.conectar({ code, redirectUri: redirectTeams(req) });
+  if (!r.ok) return volver(`teams_error=${encodeURIComponent(`No se pudo conectar: ${r.error}`)}`);
+  teams.sincronizarLuego();
+  volver('teams_conectado=1');
+});
+
 router.get('/cohortes', requireAuth, async (req, res) => {
   const { rows } = await query(`SELECT * FROM cohortes ORDER BY curso, fecha_inicio NULLS LAST, modalidad, dias`);
   const cursos = ['Excel', 'SQL Server', 'Power BI', 'Python'];
@@ -472,6 +505,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
     <h1>Cohortes</h1>
     <p class="sub">Si cambias la fecha de inicio, el último día se recorre igual, los pagos pendientes de sus alumnos se recalculan y sus recordatorios se mueven en Outlook. El último día se calcula solo a 10 semanas; cámbialo si hay días festivos.</p>
     ${await avisoCalendario()}
+    ${await avisoTeams(req)}
     <form method="post" action="/admin/cohortes">
       ${tarjetas}
       <div style="margin:4px 0 24px">

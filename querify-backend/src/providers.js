@@ -111,8 +111,11 @@ async function sendEmail({ to, tipo, vars }) {
 // aplicación Calendars.ReadWrite (con consentimiento de administrador).
 // Simulado: no llama a Graph y regresa un id falso, así el resto del flujo
 // (guardar, mover, borrar) se puede probar en local.
-async function graph(method, ruta, body) {
-  const token = await getGraphToken();
+// `tokenDelegado`: actuar como la persona que conectó Teams en el panel (ver
+// teams.js) en vez de como la app — Microsoft no deja que la app agregue
+// invitados a un equipo.
+async function graph(method, ruta, body, tokenDelegado = null) {
+  const token = tokenDelegado || await getGraphToken();
   for (let intento = 0; intento < 3; intento++) {
     const res = await fetch(`https://graph.microsoft.com/v1.0${ruta}`, {
       method,
@@ -213,31 +216,64 @@ async function invitarInvitado({ correo, nombre, mensaje }) {
 
 // Agregar a alguien que ya está se toma como éxito. Un invitado recién creado
 // a veces tarda unos segundos en poder agregarse: se reintenta un par de veces.
-async function agregarMiembro(ruta, usuarioId, roles) {
+// `token` = delegado (para alumnos invitados); null = como la app (propietarios).
+async function agregarMiembro(ruta, usuarioId, roles, token) {
   if (config.simulate.teams) return { ok: true };
   let r;
   for (let intento = 0; intento < 4; intento++) {
-    r = await graph('POST', ruta, miembro(usuarioId, roles));
+    r = await graph('POST', ruta, miembro(usuarioId, roles), token);
     if (r.ok || r.status === 409 || /already/i.test(r.error || '')) return { ok: true };
     if (r.status !== 404 && r.status !== 400) break;
     await new Promise(res => setTimeout(res, 5000));
   }
   return r;
 }
-const teamsAgregarAlEquipo = (equipoId, usuarioId) => agregarMiembro(`/teams/${equipoId}/members`, usuarioId, []);
-const teamsAgregarAlCanal = (equipoId, canalId, usuarioId, propietario = false) =>
-  agregarMiembro(`/teams/${equipoId}/channels/${encodeURIComponent(canalId)}/members`, usuarioId, propietario ? ['owner'] : []);
+const teamsAgregarAlEquipo = (token, equipoId, usuarioId) => agregarMiembro(`/teams/${equipoId}/members`, usuarioId, [], token);
+const teamsAgregarAlCanal = (token, equipoId, canalId, usuarioId, propietario = false) =>
+  agregarMiembro(`/teams/${equipoId}/channels/${encodeURIComponent(canalId)}/members`, usuarioId, propietario ? ['owner'] : [], token);
 
-async function teamsQuitarDelCanal(equipoId, canalId, usuarioId) {
+async function teamsQuitarDelCanal(token, equipoId, canalId, usuarioId) {
   if (config.simulate.teams) return { ok: true };
   const base = `/teams/${equipoId}/channels/${encodeURIComponent(canalId)}/members`;
-  const r = await graph('GET', base);
+  const r = await graph('GET', base, null, token);
   if (r.status === 404) return { ok: true };   // el canal ya no existe
   if (!r.ok) return r;
   const m = (r.data.value || []).find(x => x.userId === usuarioId);
   if (!m) return { ok: true };
-  const d = await graph('DELETE', `${base}/${encodeURIComponent(m.id)}`);
+  const d = await graph('DELETE', `${base}/${encodeURIComponent(m.id)}`, null, token);
   return d.ok || d.status === 404 ? { ok: true } : d;
+}
+
+/* ------------- Inicio de sesión de Microsoft (permisos delegados) ------------- */
+// Para "Conectar Teams" del panel: flujo de código de autorización con la
+// misma app. Requiere la URI de redirección registrada (plataforma Web) y los
+// permisos delegados con consentimiento de administrador.
+const urlLogin = ruta => `https://login.microsoftonline.com/${config.graph.tenantId}/oauth2/v2.0/${ruta}`;
+
+function urlAutorizacion({ redirectUri, state, scopes }) {
+  return urlLogin('authorize') + '?' + new URLSearchParams({
+    client_id: config.graph.clientId, response_type: 'code', response_mode: 'query',
+    redirect_uri: redirectUri, scope: scopes, state, prompt: 'select_account',
+  });
+}
+
+async function pedirTokenDelegado(params, scopes) {
+  const res = await fetch(urlLogin('token'), {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: config.graph.clientId, client_secret: config.graph.clientSecret, scope: scopes, ...params }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: d.error_description?.split('\r\n')[0] || d.error || `HTTP ${res.status}`, codigo: d.error };
+  return { ok: true, access: d.access_token, refresh: d.refresh_token, expiraEn: d.expires_in };
+}
+const canjearCodigo = ({ code, redirectUri, scopes }) =>
+  pedirTokenDelegado({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }, scopes);
+const refrescarDelegado = (refreshToken, scopes) =>
+  pedirTokenDelegado({ grant_type: 'refresh_token', refresh_token: refreshToken }, scopes);
+
+async function quienSoy(token) {
+  const r = await graph('GET', '/me?$select=displayName,userPrincipalName', null, token);
+  return r.ok ? { ok: true, nombre: r.data.displayName, correo: r.data.userPrincipalName } : r;
 }
 
 /* --------------------------------- Stripe -------------------------------------- */
@@ -428,4 +464,5 @@ module.exports = {
   crearEventoCalendario, actualizarEventoCalendario, borrarEventoCalendario,
   teamsBuscarEquipo, teamsBuscarCanal, teamsCrearCanal, usuarioPorCorreo, invitarInvitado,
   teamsAgregarAlEquipo, teamsAgregarAlCanal, teamsQuitarDelCanal,
+  urlAutorizacion, canjearCodigo, refrescarDelegado, quienSoy,
 };

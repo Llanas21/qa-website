@@ -246,3 +246,15 @@ CREATE TABLE IF NOT EXISTS alumno_teams (
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (alumno_id, correo)
 );
+
+-- Cuenta de Microsoft conectada desde el panel ("Conectar Teams", ver
+-- teams.js): el sistema agrega a los alumnos actuando como esa persona,
+-- porque Microsoft no deja que la app sola agregue invitados a un equipo.
+-- Una sola fila. El refresh token va cifrado con SESSION_SECRET.
+CREATE TABLE IF NOT EXISTS teams_conexion (
+  id               INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  usuario          TEXT,
+  refresh_cifrado  TEXT,
+  conectado_en     TIMESTAMPTZ,
+  error            TEXT
+);
