@@ -212,3 +212,37 @@ CREATE TABLE IF NOT EXISTS cohorte_eventos (
 -- `fechas_inicio` queda reemplazada por `cohortes` (ver decisión en la
 -- conversación de esta funcionalidad) — se elimina si existía de antes.
 DROP TABLE IF EXISTS fechas_inicio;
+
+-- Teams (5 nov 2026, ver teams.js): el día antes del inicio se crea el canal
+-- privado del grupo (ej. SAB-1126) en el equipo de su curso y año ("SQL
+-- SERVER 2026") y se agregan sus alumnos como invitados. `teams_auto` deja
+-- fuera a los grupos que ya existían al estrenarlo — sus canales se hicieron
+-- a mano y sus alumnos ya están dentro —: al crear la columna, los grupos que
+-- empiezan hoy o mañana (o ya empezaron) quedan en false; los demás, y todos
+-- los nuevos, en true.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'cohortes' AND column_name = 'teams_auto') THEN
+    ALTER TABLE cohortes ADD COLUMN teams_auto BOOLEAN NOT NULL DEFAULT true;
+    UPDATE cohortes SET teams_auto = false WHERE fecha_inicio IS NOT NULL AND fecha_inicio <= CURRENT_DATE + 1;
+  END IF;
+END $$;
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS teams_equipo_id TEXT;
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS teams_canal_id TEXT;
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS teams_canal_nombre TEXT;
+ALTER TABLE cohortes ADD COLUMN IF NOT EXISTS teams_error TEXT;
+
+-- Correos de Teams de cada alumno: el de su inscripción y los que se agreguen
+-- a mano (si después usa otro, conviven los dos). `cohorte_id` = canal en el
+-- que ya está agregado (NULL = falta agregarlo); al cambiar de grupo o darse
+-- de baja, se le saca de ese canal.
+CREATE TABLE IF NOT EXISTS alumno_teams (
+  id              SERIAL PRIMARY KEY,
+  alumno_id       INT  NOT NULL REFERENCES alumnos(id) ON DELETE CASCADE,
+  correo          TEXT NOT NULL,
+  usuario_id      TEXT,                       -- id del invitado en Entra
+  cohorte_id      INT  REFERENCES cohortes(id),
+  error           TEXT,
+  actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (alumno_id, correo)
+);

@@ -13,6 +13,19 @@ const engine = require('./engine');
 const certificados = require('./certificados');
 const calendario = require('./calendario');
 const providers = require('./providers');
+const teams = require('./teams');
+
+// Estado del canal de Teams de un grupo (ver teams.js), para Cohortes y la
+// página del grupo. Vacío si Teams no está activado o el grupo no tiene fecha.
+function estadoTeams(c) {
+  if (!teams.activo() || !c.fecha_inicio) return '';
+  const p = (clase, texto) => `<p class="pill ${clase}" style="margin:10px 0 0;font-size:12.5px">${texto}</p>`;
+  if (!c.teams_auto) return p('', 'Teams: canal manejado a mano (ya existía antes de automatizarlo).');
+  if (c.teams_canal_id) return p('ok', `✓ Teams: canal <b>${esc(c.teams_canal_nombre)}</b> en ${esc(teams.nombreEquipo(c))}.`);
+  if (c.teams_error) return p('bad', `✗ Teams: ${esc(c.teams_error)}`);
+  const cuando = teams.momentoCanal(c).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/Mexico_City' });
+  return p('', `Teams: el canal <b>${esc(teams.nombreCanal(c))}</b> se crea el ${cuando} en ${esc(teams.nombreEquipo(c))}.`);
+}
 
 const router = express.Router();
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c =>
@@ -447,6 +460,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
         <div class="field" style="margin-bottom:0"><label>Cupo máximo</label>
           <input type="text" inputmode="numeric" name="cupo_${r.id}" value="${r.cupo_maximo}"></div>
       </div>
+      ${estadoTeams(r)}
       <a href="/admin/grupo/${r.id}" style="display:inline-block;margin-top:12px;font-size:13px;font-weight:600">Ver alumnos de este grupo →</a>
     </div>`;
   }).join('');
@@ -698,6 +712,7 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
     <h1>${codigo ? esc(codigo) : `${esc(cohorte.curso)} <span class="pill" style="margin:0">· ${label(cohorte.modalidad)}</span>`}</h1>
     <p class="sub">${codigo ? `${esc(cohorte.curso)} · ${label(cohorte.modalidad)} · ` : ''}Inicia ${fmtDia(cohorte.fecha_inicio)}${cohorte.fecha_fin ? ` · termina ${fmtDia(cohorte.fecha_fin)}` : ''} · ${cohorte.lugares_ocupados} / ${cohorte.cupo_maximo} ocupados</p>
     ${sinFecha ? '<p class="pill bad">Sin fecha de inicio: asígnala en Cohortes para dar de alta alumnos.</p>' : ''}
+    ${estadoTeams(cohorte) ? `<div style="margin:-6px 0 16px">${estadoTeams(cohorte)}</div>` : ''}
     ${sinFecha || sinCupo || terminado ? '' : `
     <div class="card" style="margin-bottom:16px">
       <p class="sub" style="margin:0 0 10px">Liga para que alguien se inscriba a este grupo aunque ya haya empezado: llena sus datos y paga el pago 1 con tarjeta o transferencia, y queda dado de alta solo.</p>
@@ -848,6 +863,40 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     '', a.clabe, `Banco: ${a.clabe_banco}`, `A nombre de: ${a.clabe_titular}`, '',
     `Cada pago es de $${config.pagos.monto} MXN y se registra solo en cuanto llega. Guárdala en tu banco para tus siguientes pagos.`,
   ].join('\n') : '';
+  // Correos con los que está (o va a estar) en el canal de Teams de su grupo.
+  let tarjetaTeams = '';
+  const grupo = (await query(`SELECT * FROM cohortes WHERE id = $1`, [a.cohorte_id])).rows[0];
+  if (teams.activo() && !a.fecha_baja && grupo.fecha_inicio) {
+    const correos = (await query(`SELECT * FROM alumno_teams WHERE alumno_id = $1 ORDER BY id`, [a.id])).rows;
+    // El de inscripción entra en la siguiente sincronización: se muestra desde ya.
+    if (a.correo && !correos.some(t => t.correo === a.correo.toLowerCase())) correos.unshift({ correo: a.correo.toLowerCase() });
+    const estadoCorreo = t => t.cohorte_id === a.cohorte_id ? `<span class="tag ok">en el canal</span>`
+      : t.error ? `<span class="tag bad">error</span>`
+      : grupo.teams_canal_id ? `<span class="tag">agregando…</span>`
+      : `<span class="tag">cuando se cree el canal</span>`;
+    tarjetaTeams = !grupo.teams_auto ? `
+    <h2>Teams</h2>
+    <div class="card"><p class="sub" style="margin:0">El canal de Teams de este grupo se maneja a mano (ya existía antes de automatizarlo).</p></div>` : `
+    <h2>Teams</h2>
+    <div class="card">
+      ${estadoTeams(grupo).replace('margin:10px 0 0', 'margin:0 0 12px')}
+      ${req.query.teams_error ? `<p class="pill bad" style="margin:0 0 12px">✗ ${esc(req.query.teams_error)}</p>` : ''}
+      ${correos.map(t => `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:6px 0;font-size:14px">
+        <div style="min-width:0">${copiable(t.correo)}</div><div style="flex:0 0 auto">${estadoCorreo(t)}</div>
+      </div>
+      ${t.error && t.cohorte_id !== a.cohorte_id ? `<p class="sub" style="margin:0 0 6px;font-size:12.5px;color:var(--bad, #b91c1c)">${esc(t.error)} Se reintenta cada hora.</p>` : ''}`).join('')}
+      <form method="post" action="/admin/alumno/${a.id}/teams" style="margin-top:14px;padding-top:14px;border-top:1px dashed #cbd5e1"
+            onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Agregando…'">
+        <p class="sub" style="margin:0 0 8px">¿Usa otro correo en Teams? Agrégalo y tendrá acceso con los dos.</p>
+        <div class="actions" style="margin-top:0">
+          <input type="email" name="correo" placeholder="otro@correo.com" required style="flex:1;min-width:0">
+          <button class="btn ghost" type="submit">Agregar correo</button>
+        </div>
+      </form>
+    </div>`;
+  }
+
   const transferencia = a.fecha_baja ? '' : `
     <h2>Transferencia</h2>
     <div class="card">
@@ -891,6 +940,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
           <button class="btn danger" type="submit">Dar de baja</button>
         </form>`}
       </div></div>
+    ${tarjetaTeams}
     <h2>Plan de pagos</h2>
     ${pendientes ? `<form method="post" action="/admin/alumno/${a.id}/liquidar" style="margin:-6px 0 14px" onsubmit="return confirm('¿Marcar los ${pendientes} pago(s) restantes como pagados?')">
       <button class="btn ghost" type="submit">Liquidar</button>
@@ -975,6 +1025,19 @@ router.post('/alumno/:id/simular-transferencia', requireAuth, async (req, res) =
     return res.redirect(`/admin/alumno/${req.params.id}?clabe_error=${encodeURIComponent(err.message)}`);
   }
   await new Promise(r => setTimeout(r, 6000));
+  res.redirect(`/admin/alumno/${req.params.id}`);
+});
+
+// Otro correo de Teams para el alumno (ver teams.js): se agrega al canal sin
+// quitar los que ya tenía. Se espera a la sincronización para que al volver
+// a la ficha ya se vea si quedó o si falló.
+router.post('/alumno/:id/teams', requireAuth, async (req, res) => {
+  const correo = (req.body.correo || '').toString().trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(correo)) {
+    return res.redirect(`/admin/alumno/${req.params.id}?teams_error=${encodeURIComponent('Ese correo no es válido.')}`);
+  }
+  await teams.agregarCorreo(req.params.id, correo);
+  await teams.sincronizar().catch(err => console.error('[teams]', err.message));
   res.redirect(`/admin/alumno/${req.params.id}`);
 });
 

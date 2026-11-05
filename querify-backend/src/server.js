@@ -11,6 +11,7 @@ const publicRoutes = require('./routes');
 const admin = require('./admin');
 const engine = require('./engine');
 const calendario = require('./calendario');
+const teams = require('./teams');
 
 const app = express();
 app.set('trust proxy', 1); // detrás de proxy (Railway/Render) para cookies seguras
@@ -74,7 +75,9 @@ async function main() {
   cron.schedule(config.cron, () => {
     engine.revisarPagosPorVencer().catch(e => console.error('[cron pagos]', e.message));
     calendario.sincronizarPendientes().catch(e => console.error('[cron calendario]', e.message));
+    teams.sincronizar().catch(e => console.error('[cron teams]', e.message));
   });
+  teams.sincronizar().catch(e => console.error('[teams]', e.message));
   // Al arrancar también: así un deploy (o una lista nueva de recordatorios)
   // no espera a la siguiente hora en punto.
   calendario.sincronizarPendientes().catch(e => console.error('[calendario]', e.message));

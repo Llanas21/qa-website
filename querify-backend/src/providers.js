@@ -111,7 +111,7 @@ async function sendEmail({ to, tipo, vars }) {
 // aplicación Calendars.ReadWrite (con consentimiento de administrador).
 // Simulado: no llama a Graph y regresa un id falso, así el resto del flujo
 // (guardar, mover, borrar) se puede probar en local.
-async function graphCalendario(method, ruta, body) {
+async function graph(method, ruta, body) {
   const token = await getGraphToken();
   for (let intento = 0; intento < 3; intento++) {
     const res = await fetch(`https://graph.microsoft.com/v1.0${ruta}`, {
@@ -131,7 +131,7 @@ async function graphCalendario(method, ruta, body) {
 
 async function crearEventoCalendario(buzon, evento) {
   if (config.simulate.calendario) return { ok: true, id: `simulado-${crypto.randomUUID()}` };
-  const r = await graphCalendario('POST', `/users/${encodeURIComponent(buzon)}/events`, evento);
+  const r = await graph('POST', `/users/${encodeURIComponent(buzon)}/events`, evento);
   return r.ok ? { ok: true, id: r.data.id } : { ok: false, status: r.status, error: r.error };
 }
 
@@ -139,14 +139,105 @@ async function crearEventoCalendario(buzon, evento) {
 // llama lo vuelve a crear.
 async function actualizarEventoCalendario(buzon, id, evento) {
   if (config.simulate.calendario) return { ok: true };
-  const r = await graphCalendario('PATCH', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`, evento);
+  const r = await graph('PATCH', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`, evento);
   return r.ok ? { ok: true } : { ok: false, status: r.status, noExiste: r.status === 404 || r.status === 400, error: r.error };
 }
 
 async function borrarEventoCalendario(buzon, id) {
   if (config.simulate.calendario) return { ok: true };
-  const r = await graphCalendario('DELETE', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`);
+  const r = await graph('DELETE', `/users/${encodeURIComponent(buzon)}/events/${encodeURIComponent(id)}`);
   return r.ok || r.status === 404 || r.status === 400 ? { ok: true } : { ok: false, status: r.status, error: r.error };
+}
+
+/* --------------------------------- Teams (Graph) --------------------------------- */
+// Canal privado de cada grupo y sus alumnos como invitados (ver teams.js).
+// Permisos de aplicación: Group.Read.All, Channel.Create,
+// ChannelMember.ReadWrite.All, TeamMember.ReadWrite.All, User.Invite.All y
+// User.Read.All. Simulado: ids falsos, sin llamar a Graph.
+const odata = s => String(s).replace(/'/g, "''");
+const miembro = (usuarioId, roles = []) => ({
+  '@odata.type': '#microsoft.graph.aadUserConversationMember', roles,
+  'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${usuarioId}')`,
+});
+const simuladoId = () => `simulado-${crypto.randomUUID()}`;
+
+// El equipo de un curso y año, por su nombre exacto (ej. "SQL SERVER 2026").
+async function teamsBuscarEquipo(nombre) {
+  if (config.simulate.teams) return { ok: true, id: simuladoId() };
+  const r = await graph('GET', `/groups?$filter=displayName eq '${odata(nombre)}'&$select=id,displayName,resourceProvisioningOptions`);
+  if (!r.ok) return r;
+  const g = (r.data.value || []).find(x => (x.resourceProvisioningOptions || []).includes('Team'));
+  return { ok: true, id: g ? g.id : null };
+}
+
+async function teamsBuscarCanal(equipoId, nombre) {
+  if (config.simulate.teams) return { ok: true, id: null };
+  const r = await graph('GET', `/teams/${equipoId}/channels?$select=id,displayName`);
+  if (!r.ok) return r;
+  const c = (r.data.value || []).find(x => x.displayName.toLowerCase() === nombre.toLowerCase());
+  return { ok: true, id: c ? c.id : null };
+}
+
+// Graph pide al menos un propietario al crear un canal privado con permisos
+// de aplicación; los demás se agregan después.
+async function teamsCrearCanal(equipoId, { nombre, descripcion, propietarioId }) {
+  if (config.simulate.teams) return { ok: true, id: simuladoId() };
+  const r = await graph('POST', `/teams/${equipoId}/channels`, {
+    displayName: nombre, description: descripcion, membershipType: 'private',
+    members: [miembro(propietarioId, ['owner'])],
+  });
+  return r.ok ? { ok: true, id: r.data.id } : r;
+}
+
+async function usuarioPorCorreo(correo) {
+  if (config.simulate.teams) return { ok: true, id: simuladoId() };
+  const c = odata(correo);
+  // Un invitado tiene su correo en `mail`; alguien de la organización, en
+  // `userPrincipalName` (si es que alguna vez se agrega uno así).
+  const r = await graph('GET', `/users?$filter=mail eq '${c}' or userPrincipalName eq '${c}'&$select=id`);
+  if (!r.ok) return r;
+  return { ok: true, id: r.data.value?.[0]?.id || null };
+}
+
+// Lo invita como invitado de la organización: Microsoft le manda un correo
+// para aceptar y entra con su propio correo (Gmail, Hotmail...).
+async function invitarInvitado({ correo, nombre, mensaje }) {
+  if (config.simulate.teams) return { ok: true, id: simuladoId() };
+  const r = await graph('POST', '/invitations', {
+    invitedUserEmailAddress: correo, invitedUserDisplayName: nombre,
+    inviteRedirectUrl: 'https://teams.microsoft.com', sendInvitationMessage: true,
+    invitedUserMessageInfo: { customizedMessageBody: mensaje },
+  });
+  return r.ok ? { ok: true, id: r.data.invitedUser.id } : r;
+}
+
+// Agregar a alguien que ya está se toma como éxito. Un invitado recién creado
+// a veces tarda unos segundos en poder agregarse: se reintenta un par de veces.
+async function agregarMiembro(ruta, usuarioId, roles) {
+  if (config.simulate.teams) return { ok: true };
+  let r;
+  for (let intento = 0; intento < 4; intento++) {
+    r = await graph('POST', ruta, miembro(usuarioId, roles));
+    if (r.ok || r.status === 409 || /already/i.test(r.error || '')) return { ok: true };
+    if (r.status !== 404 && r.status !== 400) break;
+    await new Promise(res => setTimeout(res, 5000));
+  }
+  return r;
+}
+const teamsAgregarAlEquipo = (equipoId, usuarioId) => agregarMiembro(`/teams/${equipoId}/members`, usuarioId, []);
+const teamsAgregarAlCanal = (equipoId, canalId, usuarioId, propietario = false) =>
+  agregarMiembro(`/teams/${equipoId}/channels/${encodeURIComponent(canalId)}/members`, usuarioId, propietario ? ['owner'] : []);
+
+async function teamsQuitarDelCanal(equipoId, canalId, usuarioId) {
+  if (config.simulate.teams) return { ok: true };
+  const base = `/teams/${equipoId}/channels/${encodeURIComponent(canalId)}/members`;
+  const r = await graph('GET', base);
+  if (r.status === 404) return { ok: true };   // el canal ya no existe
+  if (!r.ok) return r;
+  const m = (r.data.value || []).find(x => x.userId === usuarioId);
+  if (!m) return { ok: true };
+  const d = await graph('DELETE', `${base}/${encodeURIComponent(m.id)}`);
+  return d.ok || d.status === 404 ? { ok: true } : d;
 }
 
 /* --------------------------------- Stripe -------------------------------------- */
@@ -335,4 +426,6 @@ module.exports = {
   crearClabe, clienteStripe, actualizarClienteStripe, datosTransferencia, estadoCheckout, transferenciasAbiertas, cancelarTransferenciasAbiertas,
   saldoTransferencias, cobrarDeSaldo, stripeEnPrueba, simularTransferencia,
   crearEventoCalendario, actualizarEventoCalendario, borrarEventoCalendario,
+  teamsBuscarEquipo, teamsBuscarCanal, teamsCrearCanal, usuarioPorCorreo, invitarInvitado,
+  teamsAgregarAlEquipo, teamsAgregarAlCanal, teamsQuitarDelCanal,
 };

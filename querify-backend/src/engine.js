@@ -4,6 +4,7 @@ const { config, query } = require('./db');
 const providers = require('./providers');
 const tpl = require('./templates');
 const calendario = require('./calendario');
+const teams = require('./teams');
 
 const HORA = 3600 * 1000;
 
@@ -216,6 +217,9 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
     });
   }
 
+  // Si el canal de Teams de su grupo ya existe (se inscribió el último día o
+  // ya empezado), se agrega de una vez; si no, entra cuando se cree.
+  teams.sincronizarLuego();
   return alumno;
 }
 
@@ -322,6 +326,7 @@ async function darDeBaja(alumnoId) {
     tipo: 'sistema', canal: 'sistema', estado: 'nota',
     contenido: `Dado de baja desde el panel: ${cancelados} pago(s) pendiente(s) cancelado(s) y su lugar liberado.`,
   });
+  teams.sincronizarLuego();   // lo saca del canal de Teams de su grupo
   return { ok: true };
 }
 
@@ -380,6 +385,9 @@ async function editarAlumno(alumnoId, { nombre, whatsapp, correo, cohorteId }) {
     tipo: 'sistema', canal: 'sistema', estado: 'nota',
     contenido: `Datos corregidos desde el panel — ${cambios.join('; ')}.${nueva ? ' Se recalcularon las fechas de sus pagos pendientes.' : ''}`,
   });
+  // Cambio de grupo: de un canal de Teams al otro. Correo nuevo: se agrega
+  // también (el viejo se queda).
+  teams.sincronizarLuego();
   return { ok: true };
 }
 

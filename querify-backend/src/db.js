@@ -48,6 +48,14 @@ const config = {
     zona: env('CALENDARIO_ZONA', 'Central Standard Time (Mexico)'), // nombre de Windows: el que Graph acepta siempre
   },
 
+  // Canal privado de Teams de cada grupo, con sus alumnos como invitados (ver
+  // teams.js). Los propietarios son los dueños de cada canal; sin ellos la
+  // función está apagada y no hace nada. Misma app de Graph que el correo.
+  teams: {
+    propietarios: env('TEAMS_PROPIETARIOS').split(',').map(s => s.trim()).filter(Boolean),
+    horaCanal: num('TEAMS_HORA_CANAL', 15),   // el día antes del inicio, hora del centro de México
+  },
+
   // Stripe Checkout para el apartado de lugar (pago 1) y los pagos 2-5.
   // Si falta STRIPE_SECRET_KEY, toda la inscripción corre en modo simulación.
   stripe: {
@@ -89,6 +97,7 @@ config.simulate = {
   whatsapp: !(config.whatsapp.token && config.whatsapp.phoneNumberId),
   email: !graphReady,
   calendario: !(graphReady && config.calendario.buzones.length),
+  teams: !(graphReady && config.teams.propietarios.length),
   stripe: !config.stripe.secretKey,
 };
 
