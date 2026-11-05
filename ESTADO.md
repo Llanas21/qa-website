@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 29 de octubre de 2026
+Última actualización: 5 de noviembre de 2026
 
 ## Qué es
 
@@ -38,6 +38,36 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Canal de Teams automático por grupo (5 nov 2026)** — antes el
+  usuario creaba a mano, el día antes del inicio, el canal privado del grupo
+  y agregaba a cada alumno (primero al equipo, luego al canal). Ahora
+  (`src/teams.js`):
+  - Estructura del usuario: un equipo por curso y año ("SQL SERVER 2027",
+    lo crea él una vez al año; desde 2027 todos con ese formato) con un
+    canal **privado** por grupo nombrado DIAS-MMYY ("SAB-1126").
+  - El día antes del inicio a las **3:00 pm CDMX** el sistema crea el canal
+    (José y David propietarios) y agrega a los inscritos como **invitados**:
+    al equipo y luego al canal. Quien paga después entra al momento. Baja =
+    lo saca del canal; cambio de grupo = cambia de canal; al terminar el
+    curso no se toca nada.
+  - Varios correos por alumno (ficha → Teams → "Agregar correo"): si
+    después usa otro, conviven los dos (decisión del usuario).
+  - **Microsoft no deja que la app sola agregue invitados a un equipo**
+    (403 "An unknown error has occurred", limitación conocida; también falla
+    el endpoint de alta masiva). Por eso los alumnos se agregan actuando como
+    la cuenta conectada en Cohortes → **"Conectar Teams"** (permisos
+    delegados, refresh token cifrado en `teams_conexion`, se renueva cada
+    hora). Crear el canal y poner propietarios sí lo hace la app.
+  - Probado de punta a punta con el equipo PRUEBAS 2026: canal, invitación,
+    alta en equipo y canal, el invitado **ve los archivos del canal sin
+    compartirle nada aparte** (lo de compartir carpetas a mano era el retraso
+    de Microsoft en dar acceso), y baja.
+  - Los grupos que ya existían al estrenarlo (empiezan hoy/mañana o ya
+    empezaron) quedan como "manejados a mano" (`cohortes.teams_auto`).
+  - **Pendiente (pausado por el usuario):** copiar material a cada canal
+    (aún no hay material estándar), personalizar el diseño del sitio de cada
+    canal (sigue a mano) y agregar a los profesores (aún no hay fijos).
 
 - [x] **Prospectos eliminados por completo (29 oct 2026)** — el usuario ya
   había rescatado lo que necesitaba y pidió quitar todo lo relacionado
@@ -86,9 +116,7 @@ tiempo. Decisiones tomadas en esa conversación:
     (nombre, WhatsApp, correo) dentro del evento "Contactar a los alumnos" de
     cada grupo, actualizada al inscribirse/darse de baja. Por ahora el evento
     solo trae la liga al grupo en el panel, y al usuario le basta.
-  - Siguiente etapa posible (idea, no pedida aún): que el sistema cree solo
-    el canal de Teams y la carpeta de SharePoint del grupo en vez de
-    recordarlo.
+  - El canal de Teams ya se crea solo (5 nov 2026, ver arriba).
 
 - [x] **Pago por transferencia SPEI con Stripe (23 oct 2026)** — antes, quien
   no quería pagar con tarjeta transfería a la cuenta personal del usuario y
