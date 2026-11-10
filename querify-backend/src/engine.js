@@ -222,6 +222,9 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
   // Si el canal de Teams de su grupo ya existe (se inscribió el último día o
   // ya empezado), se agrega de una vez; si no, entra cuando se cree.
   teams.sincronizarLuego();
+  // Con su primer alumno, al grupo le tocan los recordatorios "solo en
+  // grupos con alumnos" (fechas límite de pago).
+  await calendario.marcarPendientes([cohorteId]);
   return alumno;
 }
 
@@ -329,6 +332,8 @@ async function darDeBaja(alumnoId) {
     contenido: `Dado de baja desde el panel: ${cancelados} pago(s) pendiente(s) cancelado(s) y su lugar liberado.`,
   });
   teams.sincronizarLuego();   // lo saca del canal de Teams de su grupo
+  // Si era el último alumno, el grupo pierde sus recordatorios "solo con alumnos".
+  await calendario.marcarPendientes([rows[0].cohorte_id]);
   return { ok: true };
 }
 
@@ -390,6 +395,9 @@ async function editarAlumno(alumnoId, { nombre, whatsapp, correo, cohorteId }) {
   // Cambio de grupo: de un canal de Teams al otro. Correo nuevo: se agrega
   // también (el viejo se queda).
   teams.sincronizarLuego();
+  // Recordatorios "solo con alumnos": el grupo viejo pudo quedarse sin
+  // alumnos y el nuevo tener el primero.
+  if (nueva) await calendario.marcarPendientes([a.cohorte_id, cohorteId]);
   return { ok: true };
 }
 

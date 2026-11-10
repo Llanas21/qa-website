@@ -182,6 +182,10 @@ WITH m AS (
   WHERE alcance IS NULL RETURNING 1
 )
 UPDATE cohortes SET calendario_pendiente = true WHERE EXISTS (SELECT 1 FROM m) AND fecha_inicio IS NOT NULL;
+-- Recordatorios que solo salen en grupos con al menos un alumno activo (ej.
+-- las fechas límite de pago, 9 nov 2026): un grupo sin inscritos no tiene a
+-- quién cobrarle.
+ALTER TABLE recordatorios ADD COLUMN IF NOT EXISTS solo_con_alumnos BOOLEAN NOT NULL DEFAULT false;
 
 -- Eventos de los recordatorios generales: uno por recordatorio × fecha ×
 -- buzón, compartido por todos los grupos que caen en esa fecha.

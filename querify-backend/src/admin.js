@@ -609,6 +609,8 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
       </div>
       <div class="field" style="margin-bottom:6px"><label>Notas <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
         <textarea name="notas_${r.id}" rows="2">${esc(r.notas || '')}</textarea></div>
+      <label style="display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13.5px">
+        <input type="checkbox" name="solo_${r.id}"${r.solo_con_alumnos ? ' checked' : ''}> Solo en grupos con alumnos</label>
       <div class="li-meta">${esc(cuandoTexto(r))}</div>
       ${fechasEj(r)}
       <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13.5px;color:var(--bad-ink)">
@@ -639,6 +641,8 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
             <div class="field"><label>Hasta el día <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><input type="number" name="hasta"></div>
           </div>
           <div class="field"><label>Notas <span style="font-weight:400;color:var(--muted)">(opcional)</span></label><textarea name="notas" rows="2"></textarea></div>
+          <label class="field" style="display:flex;align-items:center;gap:8px;font-size:14px">
+            <input type="checkbox" name="solo"> Solo en grupos con alumnos</label>
           <button class="btn block" type="submit">Agregar recordatorio</button>
         </form>`,
     })}`, { section: 'recordatorios' }));
@@ -649,27 +653,28 @@ const entero = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n :
 router.post('/recordatorios', requireAuth, async (req, res) => {
   const recs = {};
   for (const [key, val] of Object.entries(req.body || {})) {
-    const m = key.match(/^(titulo|alcance|ancla|desde|hasta|notas|borrar)_(\d+)$/);
+    const m = key.match(/^(titulo|alcance|ancla|desde|hasta|notas|borrar|solo)_(\d+)$/);
     if (m) (recs[m[2]] ||= {})[m[1]] = String(val).trim();
   }
   for (const [id, r] of Object.entries(recs)) {
     if (r.borrar) { await query(`DELETE FROM recordatorios WHERE id = $1`, [id]); continue; }
     const desde = entero(r.desde);
     if (!r.titulo || desde === null) continue;
-    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6, alcance = $7 WHERE id = $1`,
-      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null, r.alcance === 'general' ? 'general' : 'grupo']);
+    // Una casilla desmarcada no se envía: sin `solo_<id>` = desmarcada.
+    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6, alcance = $7, solo_con_alumnos = $8 WHERE id = $1`,
+      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null, r.alcance === 'general' ? 'general' : 'grupo', r.solo === 'on']);
   }
   await calendario.marcarPendientes();
   res.redirect('/admin/recordatorios?ok=1');
 });
 
 router.post('/recordatorios/nuevo', requireAuth, async (req, res) => {
-  const { titulo, alcance, ancla, desde, hasta, notas } = req.body || {};
+  const { titulo, alcance, ancla, desde, hasta, notas, solo } = req.body || {};
   if (titulo && entero(desde) !== null) {
     await query(
-      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, orden)
-       VALUES ($1,$2,$3,$4,$5,$6,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
-      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null, alcance === 'general' ? 'general' : 'grupo']);
+      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, solo_con_alumnos, orden)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
+      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null, alcance === 'general' ? 'general' : 'grupo', solo === 'on']);
     await calendario.marcarPendientes();
   }
   res.redirect('/admin/recordatorios?ok=1');

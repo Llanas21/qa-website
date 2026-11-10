@@ -141,7 +141,13 @@ let ultimoError = null; // { mensaje, fecha } — se muestra en el panel
 async function sincronizarCohorte(cohorteId) {
   const c = (await query(`SELECT * FROM cohortes WHERE id = $1`, [cohorteId])).rows[0];
   if (!c) return;
-  const recs = c.fecha_inicio ? (await query(`SELECT * FROM recordatorios WHERE alcance IS DISTINCT FROM 'general' ORDER BY orden, id`)).rows : [];
+  // Los marcados "solo en grupos con alumnos" se omiten (y se borran si ya
+  // estaban) mientras el grupo no tenga ningún alumno activo.
+  const conAlumnos = (await query(`SELECT EXISTS (SELECT 1 FROM alumnos WHERE cohorte_id = $1 AND fecha_baja IS NULL) AS si`, [cohorteId])).rows[0].si;
+  const recs = c.fecha_inicio
+    ? (await query(`SELECT * FROM recordatorios WHERE alcance IS DISTINCT FROM 'general' ORDER BY orden, id`)).rows
+      .filter(r => !r.solo_con_alumnos || conAlumnos)
+    : [];
   const filas = (await query(`SELECT * FROM cohorte_eventos WHERE cohorte_id = $1`, [cohorteId])).rows;
   const existentes = new Map(filas.map(f => [`${f.recordatorio_id}|${f.buzon}`, f]));
   const cuenta = { creados: 0, actualizados: 0, borrados: 0, errores: 0 };
@@ -202,7 +208,9 @@ async function sincronizarCohorte(cohorteId) {
 let generalesPendiente = true; // al arrancar siempre se revisan
 async function sincronizarGenerales() {
   const recs = (await query(`SELECT * FROM recordatorios WHERE alcance = 'general' ORDER BY orden, id`)).rows;
-  const grupos = (await query(`SELECT * FROM cohortes WHERE fecha_inicio IS NOT NULL ORDER BY fecha_inicio, curso, id`)).rows;
+  const grupos = (await query(
+    `SELECT c.*, EXISTS (SELECT 1 FROM alumnos a WHERE a.cohorte_id = c.id AND a.fecha_baja IS NULL) AS con_alumnos
+     FROM cohortes c WHERE c.fecha_inicio IS NOT NULL ORDER BY c.fecha_inicio, c.curso, c.id`)).rows;
   const filas = (await query(`SELECT * FROM eventos_generales`)).rows;
   const existentes = new Map(filas.map(f => [`${f.recordatorio_id}|${ymd(f.desde)}|${f.buzon}`, f]));
   const cuenta = { creados: 0, actualizados: 0, borrados: 0, errores: 0 };
@@ -216,6 +224,7 @@ async function sincronizarGenerales() {
   const porFecha = new Map();
   for (const rec of recs) {
     for (const c of grupos) {
+      if (rec.solo_con_alumnos && !c.con_alumnos) continue;
       const [desde, hasta] = fechasDe(c, rec);
       const k = `${rec.id}|${desde}`;
       if (!porFecha.has(k)) porFecha.set(k, { rec, desde, hasta, grupos: [] });
