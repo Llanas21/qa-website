@@ -178,7 +178,7 @@ function shell({ preheader = '', contenido }) {
         </td></tr>
         <tr><td style="padding:20px 32px;background:${T.surface2};border-top:1px solid ${T.line}">
           <p style="margin:0 0 4px;font-size:12.5px;line-height:1.6;color:${T.muted}">Querify Analytics — cursos en vivo de Excel, SQL Server, Power BI y Python.</p>
-          <p style="margin:0;font-size:12.5px;line-height:1.6;color:${T.muted2}">Te escribimos porque dejaste tus datos en <a href="${SITIO}" style="color:${T.muted}">querifyanalytics.com</a>. Responde este correo si no quieres recibir más mensajes.</p>
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:${T.muted2}">Recibes este correo porque estás inscrito en un curso de <a href="${SITIO}" style="color:${T.muted}">Querify Analytics</a>. Si tienes cualquier duda, responde este correo.</p>
         </td></tr>
       </table>
     </td></tr>
