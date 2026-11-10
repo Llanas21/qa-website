@@ -12,9 +12,12 @@
 // (el correo real que recibe la persona — ver abajo).
 
 const SITIO = 'https://querifyanalytics.com';
-// Logo completo (la Q + "Querify Analytics / ACADEMY"), el mismo del sitio.
-// URL absoluta: el correo se abre fuera del sitio. 775x230 px.
-const LOGO = `${SITIO}/assets/img/querify-logo-completo.png`;
+// Logo completo (la Q + "Querify Analytics / ACADEMY") sobre una placa blanca
+// con esquinas redondeadas (querify-logo-correo.png, 887x310): en modo oscuro
+// las apps de correo oscurecen el fondo pero no la imagen, y con el PNG
+// transparente del sitio las letras negras no se veían. URL absoluta: el
+// correo se abre fuera del sitio, así que el archivo debe estar publicado.
+const LOGO = `${SITIO}/assets/img/querify-logo-correo.png`;
 
 // Mismos tokens de color que :root en querify-web/assets/css/styles.css —
 // para que el correo se vea como una extensión del sitio, no como una
@@ -171,7 +174,7 @@ function shell({ preheader = '', contenido }) {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:${T.surface};border-radius:18px;overflow:hidden;border:1px solid ${T.line}">
         <tr><td style="background:${T.surface};padding:28px 32px 22px;text-align:center;border-bottom:1px solid ${T.line}">
-          <img src="${LOGO}" width="200" height="59" alt="Querify Analytics Academy" style="display:block;margin:0 auto;border:0;width:200px;height:auto;max-width:100%">
+          <img src="${LOGO}" width="230" height="80" alt="Querify Analytics Academy" style="display:block;margin:0 auto;border:0;width:230px;height:auto;max-width:100%">
         </td></tr>
         <tr><td style="padding:32px">
           ${contenido}
