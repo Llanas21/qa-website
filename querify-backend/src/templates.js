@@ -30,21 +30,52 @@ const T = {
   okSoft: '#F0FDF4', okInk: '#166534',
 };
 
+// Recordatorio de los pagos 2-5: el texto depende de la etapa (v[6]), que
+// decide revisarPagosPorVencer — 2 días antes, 1 día antes, el día del pago
+// y, ya vencido, uno diario hasta que pague o se dé de baja (9 nov 2026).
+// v = [nombre, curso, n.º de pago, monto, liga, fecha ("14 de noviembre de 2026"), etapa]
+const ETAPAS_PAGO = {
+  proximo: {
+    asunto: 'Se acerca tu fecha de pago — pago {{3}}/5 del curso de {{2}}',
+    intro: 'te recordamos que tu pago {{3}}/5 del curso de {{2}} vence el {{6}}.',
+    fecha: 'Fecha límite de pago',
+  },
+  manana: {
+    asunto: 'Mañana es tu fecha límite de pago — pago {{3}}/5 del curso de {{2}}',
+    intro: 'mañana, {{6}}, es la fecha límite de tu pago {{3}}/5 del curso de {{2}}.',
+    fecha: 'Fecha límite de pago',
+  },
+  hoy: {
+    asunto: 'Hoy es tu fecha límite de pago — pago {{3}}/5 del curso de {{2}}',
+    intro: 'hoy, {{6}}, es la fecha límite de tu pago {{3}}/5 del curso de {{2}}.',
+    fecha: 'Fecha límite de pago',
+  },
+  vencido: {
+    asunto: 'Tu pago {{3}}/5 está vencido — curso de {{2}}',
+    intro: 'tu pago {{3}}/5 del curso de {{2}} venció el {{6}} y todavía no lo hemos recibido.',
+    fecha: 'Venció el',
+  },
+};
+const etapaPago = v => ETAPAS_PAGO[v[6]] || ETAPAS_PAGO.proximo;
+const cierrePago = v => v[6] === 'vencido'
+  ? 'Puedes ponerte al corriente con tarjeta o con transferencia bancaria (SPEI). Si ya lo pagaste, puede tardar un poco en reflejarse y no necesitas hacer nada más. Cualquier duda, aquí estoy 🙌'
+  : 'Puedes pagar con tarjeta o con transferencia bancaria (SPEI). En cuanto se confirme, tu pago queda registrado solo. Cualquier duda, aquí estoy 🙌';
+
 const asunto = {
-  pago:        'Pago {{3}}/5 por vencer — curso de {{2}}',
+  pago:        v => fill(etapaPago(v).asunto, v),
   inscripcion: '¡Tu lugar quedó apartado! — curso de {{2}}',
   certificado: '¡Tu certificado de {{2}} ya está listo! 🎓',
   transferencia: 'Datos para tu transferencia — curso de {{2}}',
 };
 
 const cuerpo = {
-  pago: `Hola {{1}}, tu pago {{3}}/5 del curso de {{2}} está próximo a vencer.
+  pago: v => fill(`Hola {{1}}, ${etapaPago(v).intro}
 
+📅 ${etapaPago(v).fecha}: {{6}}
 💳 Monto: $ {{4}} MXN
 🔗 Liga de pago segura (Stripe): {{5}}
-Ahí puedes pagar con tarjeta o con transferencia bancaria.
 
-En cuanto lo confirmes, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌`,
+${cierrePago(v)}`, v),
 
   inscripcion: `¡Hola {{1}}! 🎉 Tu lugar en el curso de {{2}} quedó apartado — recibimos tu primer pago de $500 MXN.
 
@@ -93,7 +124,9 @@ function fill(str, vars) {
 // guarda en mensajes.contenido — el timeline de /admin siempre se ve en texto
 // plano, nunca con el markup del HTML de abajo).
 function render(tipo, vars) {
-  return { asunto: fill(asunto[tipo] || '', vars), cuerpo: fill(cuerpo[tipo] || '', vars) };
+  // Una plantilla puede ser texto con {{N}} o una función (la de pago cambia por etapa).
+  const armar = t => typeof t === 'function' ? t(vars) : fill(t || '', vars);
+  return { asunto: armar(asunto[tipo]), cuerpo: armar(cuerpo[tipo]) };
 }
 
 // Devuelve los parámetros del body para la plantilla de Meta
@@ -156,13 +189,15 @@ function shell({ preheader = '', contenido }) {
 
 const contenidoHtml = {
   pago: (v) => `
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, tu pago <b>${esc(v[2])}/5</b> del curso de <b>${esc(v[1])}</b> está próximo a vencer.</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${T.text}">Hola ${esc(v[0])}, ${esc(fill(etapaPago(v).intro, v))}</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.surface2};border:1px solid ${T.line};border-radius:10px;margin:0 0 22px"><tr><td style="padding:18px 20px;text-align:center">
+      <p style="margin:0 0 4px;font-size:13px;color:${T.muted}">${esc(etapaPago(v).fecha)}</p>
+      <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:${v[6] === 'vencido' ? '#B91C1C' : T.ink}">${esc(v[5])}</p>
       <p style="margin:0 0 4px;font-size:13px;color:${T.muted}">Monto a pagar</p>
       <p style="margin:0 0 16px;font-size:28px;font-weight:700;color:${T.ink}">$${esc(v[3])} <span style="font-size:15px;font-weight:400;color:${T.muted}">MXN</span></p>
       ${boton('Pagar ahora', v[4], 'center')}
     </td></tr></table>
-    <p style="margin:0;font-size:14px;line-height:1.6;color:${T.muted}">Puedes pagar con tarjeta o con transferencia bancaria (SPEI). Pago seguro procesado por Stripe. En cuanto se confirme, tu lugar sigue asegurado sin problema. Cualquier duda, aquí estoy 🙌</p>`,
+    <p style="margin:0;font-size:14px;line-height:1.6;color:${T.muted}">${esc(cierrePago(v))}</p>`,
 
   inscripcion: (v) => `
     <p style="margin:0 0 4px;font-size:34px">🎉</p>

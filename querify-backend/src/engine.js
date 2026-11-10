@@ -47,8 +47,10 @@ async function enviarConVars({ pais, numero, correo, canal, tipo, vars, onLog })
 }
 
 // Envía la liga de pago (Stripe Checkout) de un pago 2-5 a un alumno.
-async function enviarLinkPago(alumno, pago, url) {
-  const vars = [alumno.nombre, alumno.curso, pago.numero_pago, Math.round(Number(pago.monto)), url];
+// `etapa`: qué correo toca según la fecha (ver etapaPago en revisarPagosPorVencer).
+async function enviarLinkPago(alumno, pago, url, etapa) {
+  const vars = [alumno.nombre, alumno.curso, pago.numero_pago, Math.round(Number(pago.monto)), url,
+    fechaLarga(pago.fecha_vencimiento), etapa];
   return enviarConVars({
     pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
     canal: 'correo', tipo: 'pago', vars,
@@ -595,14 +597,36 @@ async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.com
   }
 }
 
-// Cron horario: por cada pago 2-5 pendiente/vencido que esté
-// por vencer dentro de la ventana configurada, genera su Checkout Session (si no
-// se ha reenviado el link en las últimas ~20h) y la manda por WhatsApp→correo.
+// Fecha y hora de ahora en el centro de México (el servidor y Postgres
+// corren en UTC: con CURRENT_DATE, a partir de las 6 pm ya era "mañana").
+function ahoraMx() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  return { hoy: `${p.year}-${p.month}-${p.day}`, hora: Number(p.hour) };
+}
+const fechaLarga = f => new Date(`${calendario.ymd(f)}T12:00:00Z`)
+  .toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+// Etapa del recordatorio según los días que faltan para el vencimiento
+// (9 nov 2026, pedido del dueño): 2 días antes "se acerca", 1 día antes
+// "mañana", el mismo día "hoy" y, ya vencido, uno diario hasta que pague o se
+// dé de baja. Antes de 2 días no se manda nada.
+function etapaPago(diasFaltan) {
+  if (diasFaltan > 2) return null;
+  return diasFaltan === 2 ? 'proximo' : diasFaltan === 1 ? 'manana' : diasFaltan === 0 ? 'hoy' : 'vencido';
+}
+
+// Cron horario. Una vez al día, a partir de PAGOS_HORA_ENVIO (10:00 hora
+// CDMX), por cada pago 2-5 sin pagar que esté en alguna etapa (ver etapaPago)
+// y al que no se le haya mandado nada hoy, genera una liga de Stripe nueva y
+// manda el correo de esa etapa.
 async function revisarPagosPorVencer() {
+  const { hoy, hora } = ahoraMx();
   // Marcar vencido es solo estatus (no manda nada) — corre siempre, aunque la
   // automatización esté pausada, para que el panel admin refleje la realidad.
-  await query(`UPDATE pagos SET estado = 'vencido' WHERE estado = 'pendiente' AND fecha_vencimiento < CURRENT_DATE`);
-  if (config.automatizacionPausada) return 0;
+  await query(`UPDATE pagos SET estado = 'vencido' WHERE estado = 'pendiente' AND fecha_vencimiento < $1::date`, [hoy]);
+  if (config.automatizacionPausada || hora < config.pagos.horaEnvio) return 0;
 
   const { rows } = await query(
     `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, a.stripe_customer_id, c.curso
@@ -615,15 +639,19 @@ async function revisarPagosPorVencer() {
        -- grupo ya empezado) no se cobran solos: se registran a mano en el
        -- panel. Sin esto, el alumno recibía cobros de pagos que muy
        -- probablemente ya hizo, minutos después del alta.
-       AND p.fecha_vencimiento >= a.fecha_alta::date
-       AND p.fecha_vencimiento <= (CURRENT_DATE + $1::int)
-       AND (p.fecha_recordatorio_enviado IS NULL OR p.fecha_recordatorio_enviado < now() - interval '20 hours')
+       AND p.fecha_vencimiento >= (a.fecha_alta AT TIME ZONE 'America/Mexico_City')::date
+       AND p.fecha_vencimiento <= $1::date + 2
+       -- Uno al día como máximo: nada si ya se le mandó algo hoy (hora CDMX).
+       AND (p.fecha_recordatorio_enviado IS NULL
+            OR (p.fecha_recordatorio_enviado AT TIME ZONE 'America/Mexico_City')::date < $1::date)
      ORDER BY p.fecha_vencimiento ASC`,
-    [config.pagos.ventanaCobroDias]);
+    [hoy]);
 
   let enviados = 0;
   for (const p of rows) {
     const alumno = { id: p.alumno_id, nombre: p.nombre, whatsapp_pais: p.whatsapp_pais, whatsapp: p.whatsapp, correo: p.correo, curso: p.curso };
+    const etapa = etapaPago(calendario.diasEntre(hoy, p.fecha_vencimiento));
+    if (!etapa) continue;
 
     // Alumnos que no pasaron por la página de pago (alta manual, o inscritos
     // antes de que hubiera transferencia) no tienen cliente de Stripe: se le
@@ -659,7 +687,7 @@ async function revisarPagosPorVencer() {
       continue;
     }
 
-    const ok = await enviarLinkPago(alumno, p, r.url);
+    const ok = await enviarLinkPago(alumno, p, r.url, etapa);
     if (ok) enviados++;
   }
   if (enviados) console.info(`[pagos] ${enviados} recordatorio(s) de pago procesado(s)`);

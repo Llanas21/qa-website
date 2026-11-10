@@ -69,7 +69,10 @@ const config = {
   // vencimiento se manda el link de pago por WhatsApp/correo.
   pagos: {
     monto: num('PAGO_MONTO_MXN', 500),
-    ventanaCobroDias: num('PAGOS_VENTANA_COBRO_DIAS', 3),
+    // Hora (CDMX) desde la que se mandan los recordatorios de cada día. La
+    // secuencia (2 días antes, 1 día antes, el día y diario ya vencido) está
+    // fija en engine.etapaPago; PAGOS_VENTANA_COBRO_DIAS ya no se usa.
+    horaEnvio: num('PAGOS_HORA_ENVIO', 10),
   },
 
   // Si se define, se usa como origen absoluto para las URLs de éxito/cancelado
