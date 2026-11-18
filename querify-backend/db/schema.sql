@@ -87,9 +87,6 @@ ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_subido_en TIMESTAMPTZ;
 -- alumno ya tenga), y "Enviar al alumno" manda exactamente este PDF.
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_borrador BYTEA;
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_borrador_en TIMESTAMPTZ;
--- Imagen (JPG) de esa vista previa: es lo que se muestra en la ficha, porque
--- un PDF incrustado en el celular sale a tamaño real y no se ajusta.
-ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_borrador_img BYTEA;
 CREATE INDEX IF NOT EXISTS idx_alumnos_cohorte   ON alumnos (cohorte_id);
 
 -- Pagos: 5 exhibiciones de $500 MXN por alumno (semanas 0/2/4/6/8 desde el

@@ -51,10 +51,7 @@ async function abrirNavegador() {
   });
 }
 
-// `conImagen`: además del PDF regresa una imagen JPG del mismo certificado,
-// para la vista previa del panel — un PDF dentro de la página se ve a su
-// tamaño real en el celular (gigante), una imagen sí se ajusta al ancho.
-async function generarCertificado({ nombre, curso, conImagen = false }) {
+async function generarCertificado({ nombre, curso }) {
   const browser = await abrirNavegador();
   try {
     const page = await browser.newPage();
@@ -71,10 +68,8 @@ async function generarCertificado({ nombre, curso, conImagen = false }) {
       await Promise.all([...document.fonts].map(f => f.load()));
       ajustarNombre();
     });
-    const pdf = Buffer.from(await page.pdf({ width: `${ANCHO}px`, height: `${ALTO}px`, printBackground: true }));
-    if (!conImagen) return pdf;
-    const imagen = Buffer.from(await page.screenshot({ type: 'jpeg', quality: 85, clip: { x: 0, y: 0, width: ANCHO, height: ALTO } }));
-    return { pdf, imagen };
+    const pdf = await page.pdf({ width: `${ANCHO}px`, height: `${ALTO}px`, printBackground: true });
+    return Buffer.from(pdf);
   } finally {
     await browser.close();
   }
