@@ -370,7 +370,7 @@ async function editarAlumno(alumnoId, { nombre, whatsapp, correo, cohorteId }) {
   // Una vista previa del certificado con el nombre o curso anterior ya no
   // sirve: se descarta para no enviarla por error.
   if (nombre !== a.nombre || nueva) {
-    await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_en = NULL WHERE id = $1`, [alumnoId]);
+    await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_img = NULL, certificado_borrador_en = NULL WHERE id = $1`, [alumnoId]);
   }
 
   if (nueva) {

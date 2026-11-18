@@ -882,7 +882,14 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
         <form method="post" action="/admin/alumno/${a.id}/certificado/vista-previa" ${deshabilitar('Generando…')}>
           <button class="btn ${clase}" type="submit">${texto}</button>
         </form>`;
-  const vistaPrevia = `/admin/alumno/${a.id}/certificado/vista-previa.pdf?v=${a.certificado_borrador_en ? new Date(a.certificado_borrador_en).getTime() : ''}`;
+  const version = a.certificado_borrador_en ? new Date(a.certificado_borrador_en).getTime() : '';
+  const vistaPrevia = `/admin/alumno/${a.id}/certificado/vista-previa.pdf?v=${version}`;
+  // Vistas previas generadas antes de que existiera la imagen: se muestra el PDF.
+  const imagenPrevia = a.certificado_borrador_img
+    ? `<img src="/admin/alumno/${a.id}/certificado/vista-previa.jpg?v=${version}" alt="Vista previa del certificado"
+            style="width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:10px;background:#fff">`
+    : `<iframe src="${vistaPrevia}#view=FitH&toolbar=0" title="Vista previa del certificado"
+              style="width:100%;aspect-ratio:1.414;border:1px solid var(--line);border-radius:10px;background:#fff;display:block"></iframe>`;
   const certificado = a.fecha_baja ? '' : `
     <h2 id="certificado">Certificado</h2>
     <div class="card">
@@ -892,9 +899,8 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
         · <a href="/certificados/${a.certificado_token}" target="_blank">ver el enviado</a></p>` : ''}
       ${a.certificado_borrador_en ? `
       <p class="sub" style="margin:0 0 10px">Vista previa del ${fmt(a.certificado_borrador_en)}. Revisa el nombre y el curso antes de enviarla.</p>
-      <iframe src="${vistaPrevia}#view=FitH&toolbar=0" title="Vista previa del certificado"
-              style="width:100%;aspect-ratio:1.414;border:1px solid var(--line);border-radius:10px;background:#fff;display:block"></iframe>
-      <p style="margin:8px 0 0;font-size:13px"><a href="${vistaPrevia}" target="_blank">Abrir en pantalla completa →</a></p>
+      <a href="${vistaPrevia}" target="_blank" title="Abrir en pantalla completa">${imagenPrevia}</a>
+      <p style="margin:8px 0 0;font-size:13px"><a href="${vistaPrevia}" target="_blank">Abrir en pantalla completa (con zoom) →</a></p>
       <div class="actions">
         <form method="post" action="/admin/alumno/${a.id}/certificado/enviar" ${deshabilitar('Enviando…')}>
           <button class="btn" type="submit"${a.correo ? '' : ' disabled'}>Enviar al alumno</button>
@@ -1032,15 +1038,24 @@ router.post('/alumno/:id/certificado/vista-previa', requireAuth, async (req, res
     `SELECT a.nombre, c.curso FROM alumnos a JOIN cohortes c ON c.id = a.cohorte_id WHERE a.id = $1`, [req.params.id]);
   const a = rows[0];
   if (!a) return res.status(404).send(layout('No encontrado', '<div class="empty">Alumno no encontrado.</div>', { back: '/admin/alumnos', section: 'alumnos' }));
-  let buffer;
+  let gen;
   try {
-    buffer = await certificados.generarCertificado({ nombre: a.nombre, curso: a.curso });
+    gen = await certificados.generarCertificado({ nombre: a.nombre, curso: a.curso, conImagen: true });
   } catch (err) {
     console.error('[certificado] no se pudo generar el PDF:', err.message);
     return volverACert(req, res, `cert_error=${encodeURIComponent('No se pudo generar el certificado.')}`);
   }
-  await query(`UPDATE alumnos SET certificado_borrador = $2, certificado_borrador_en = now() WHERE id = $1`, [req.params.id, buffer]);
+  await query(`UPDATE alumnos SET certificado_borrador = $2, certificado_borrador_img = $3, certificado_borrador_en = now() WHERE id = $1`,
+    [req.params.id, gen.pdf, gen.imagen]);
   volverACert(req, res, 'cert_preview=1');
+});
+
+// Imagen de la vista previa (lo que se ve en la ficha; ver certificados.js).
+router.get('/alumno/:id/certificado/vista-previa.jpg', requireAuth, async (req, res) => {
+  const { rows } = await query(`SELECT certificado_borrador_img FROM alumnos WHERE id = $1`, [req.params.id]);
+  if (!rows[0]?.certificado_borrador_img) return res.status(404).send('Sin vista previa.');
+  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' });
+  res.send(rows[0].certificado_borrador_img);
 });
 
 // El PDF de la vista previa, solo para el panel (no es la liga pública).
@@ -1064,12 +1079,12 @@ router.post('/alumno/:id/certificado/enviar', requireAuth, async (req, res) => {
   const r = await engine.enviarCertificado(req.params.id);
   // Si el correo falla se conserva la vista previa, para reintentar con un clic.
   if (!r.ok) return volverACert(req, res, `cert_error=${encodeURIComponent('No se pudo mandar el correo. Inténtalo de nuevo.')}`);
-  await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_en = NULL WHERE id = $1`, [req.params.id]);
+  await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_img = NULL, certificado_borrador_en = NULL WHERE id = $1`, [req.params.id]);
   volverACert(req, res, 'cert_enviado=1');
 });
 
 router.post('/alumno/:id/certificado/descartar', requireAuth, async (req, res) => {
-  await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_en = NULL WHERE id = $1`, [req.params.id]);
+  await query(`UPDATE alumnos SET certificado_borrador = NULL, certificado_borrador_img = NULL, certificado_borrador_en = NULL WHERE id = $1`, [req.params.id]);
   volverACert(req, res, '');
 });
 
