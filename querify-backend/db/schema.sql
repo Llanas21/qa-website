@@ -82,6 +82,11 @@ ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_pdf BYTEA;
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_nombre TEXT;
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_token TEXT UNIQUE;
 ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_subido_en TIMESTAMPTZ;
+-- Vista previa del certificado (18 nov 2026): "Generar vista previa" la guarda
+-- aquí, aparte del certificado ya enviado (para no romper la liga que el
+-- alumno ya tenga), y "Enviar al alumno" manda exactamente este PDF.
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_borrador BYTEA;
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS certificado_borrador_en TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_alumnos_cohorte   ON alumnos (cohorte_id);
 
 -- Pagos: 5 exhibiciones de $500 MXN por alumno (semanas 0/2/4/6/8 desde el
