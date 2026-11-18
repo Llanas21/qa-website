@@ -28,8 +28,8 @@
     <div class="check">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
     </div>
-    <h1>¡Listo! Tu lugar quedó apartado</h1>
-    <p class="lede">Recibimos tu primer pago de $500 MXN. En breve te contactamos por <span id="canal-lede">WhatsApp</span> para confirmar los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.</p>
+    <h1 id="titulo">¡Listo! Tu lugar quedó apartado</h1>
+    <p class="lede" id="lede">Recibimos tu primer pago de $500 MXN. En breve te contactamos por <span id="canal-lede">WhatsApp</span> para confirmar los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.</p>
     <div class="wa" id="canal-badge">
       <svg id="canal-icon-wa" viewBox="0 0 24 24" width="17" height="17" fill="#2563EB" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.8.8-2.8-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.4-.5.2-.4c0-.2 0-.3-.1-.4l-.7-1.7c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.7.7-.9 1.6-.6 2.6.4 1.3 1.2 2.5 2.4 3.5 1.5 1.3 2.9 1.8 4.3 1.9.6 0 1.2-.1 1.6-.5.3-.3.5-.8.5-1.2 0-.2 0-.3-.2-.4z"/></svg>
       <svg id="canal-icon-correo" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
@@ -45,11 +45,24 @@
   // El canal (whatsapp/correo) lo decide el backend según si dejaste WhatsApp
   // al inscribirte — llega por query string porque quien redirige aquí es
   // Stripe, no nuestro JS (ver POST /api/inscripcion en el backend).
-  if (new URLSearchParams(location.search).get('canal') === 'correo') {
+  var q = new URLSearchParams(location.search);
+  if (q.get('canal') === 'correo') {
     document.getElementById('canal-lede').textContent = 'correo';
     document.getElementById('canal-text').textContent = 'Te contactaremos por correo';
     document.getElementById('canal-icon-wa').style.display = 'none';
     document.getElementById('canal-icon-correo').style.display = '';
+  }
+  // Pagos 2-5: Stripe regresa aquí con ?pago=N (ver revisarPagosPorVencer en
+  // el backend). Antes se mostraba igual "tu lugar quedó apartado / primer
+  // pago" y confundía a quien pagaba el 2.º pago (pasó el 13 nov 2026).
+  var pago = Number(q.get('pago'));
+  if (pago >= 2 && pago <= 5) {
+    document.title = '¡Pago recibido! — Querify Analytics';
+    document.getElementById('titulo').textContent = '¡Listo! Recibimos tu pago ' + pago + '/5';
+    document.getElementById('lede').textContent = pago === 5
+      ? 'Tu último pago de $500 MXN quedó registrado. ¡Ya completaste todos los pagos de tu curso, gracias!'
+      : 'Tu pago de $500 MXN quedó registrado automáticamente; no necesitas hacer nada más. Te avisaremos por correo cuando se acerque la fecha de tu siguiente pago.';
+    document.getElementById('canal-badge').style.display = 'none';
   }
 </script>
 <script src="assets/js/app.js" defer></script>
