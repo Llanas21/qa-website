@@ -100,7 +100,8 @@ function initInscripcionForm() {
   const hoy = new Date().toISOString().slice(0, 10);
 
   // Planes según el grupo elegido (ver planes.js en el backend): desde 2027 se
-  // elige entre 4 pagos de $625 o pago único de $2,290; los grupos de 2026
+  // elige entre pago único de $2,290 (el que el dueño prefiere vender, va
+  // primero y seleccionado) o 4 pagos de $625; los grupos de 2026
   // (solo llegan aquí por la liga de un grupo ya iniciado) tienen su plan de
   // 5 pagos y no hay nada que elegir.
   const planCard = document.getElementById("insc-plan-card");
@@ -216,7 +217,7 @@ function initInscripcionForm() {
       curso: cursoSelect.value,
       cohorteId: Number(cohorteInput.value),
       grupo: grupoLiga,
-      plan: grupoAnterior() ? null : (document.querySelector('input[name="plan"]:checked') || {}).value || "cuatro",
+      plan: grupoAnterior() ? null : (document.querySelector('input[name="plan"]:checked') || {}).value || "unico",
       whatsapp: tel ? { pais: cc, numero: tel } : null,
       correo: correo || null,
       origen: "sitio_web",

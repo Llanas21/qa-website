@@ -16,7 +16,9 @@ const PLANES = {
   cuatro: { clave: 'cuatro', nombre: '4 pagos de $625',      pagos: 4, monto: 625 },
   unico:  { clave: 'unico',  nombre: 'Pago único de $2,290', pagos: 1, monto: 2290 },
 };
-const PLANES_POR_ESQUEMA = { anterior: ['cinco'], nuevo: ['cuatro', 'unico'] };
+// El primero de cada lista es el que se ofrece primero (y el que se usa si no
+// llega plan): en 2027, el pago único, que es el que el dueño prefiere vender.
+const PLANES_POR_ESQUEMA = { anterior: ['cinco'], nuevo: ['unico', 'cuatro'] };
 const SEMANAS_CURSO = { anterior: 10, nuevo: 8 };
 
 const esquemaDe = c => (c?.plan_pagos === 'anterior' ? 'anterior' : 'nuevo');

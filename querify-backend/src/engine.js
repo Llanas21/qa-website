@@ -112,8 +112,8 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, plan: c
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte || !cohorte.fecha_inicio) return { ok: false, motivo: 'cohorte_no_existe' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
-  // Sin plan (o uno que el grupo no ofrece) → el primero del grupo: 4 pagos
-  // en los de 2027, 5 pagos en los de 2026.
+  // Sin plan (o uno que el grupo no ofrece) → el primero del grupo: pago
+  // único en los de 2027, 5 pagos en los de 2026 (ver planes.js).
   const plan = planes.plan(planes.planValido(cohorte, clavePlan) || planes.planPorDefecto(cohorte));
 
   // Cliente de Stripe (uno por correo) para que la página de pago ofrezca

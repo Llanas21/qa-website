@@ -272,6 +272,7 @@ ul{margin:0;padding:0;list-style:none}
 .side-price .amount small{font-family:var(--font-body);font-size:15px;color:var(--muted);font-weight:400}
 .side-price .apart{margin-top:12px;font-size:14.5px;color:var(--muted)}
 .side-price .apart b{color:var(--text)}
+.tag-ahorro{display:inline-block;vertical-align:middle;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:999px;padding:3px 10px}
 .side-list{margin-top:18px;display:flex;flex-direction:column;gap:11px}
 .side-list li{display:flex;gap:10px;font-size:14.5px;color:var(--text)}
 .side-list svg{width:18px;height:18px;flex:0 0 auto;margin-top:2px;stroke:var(--ok);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
