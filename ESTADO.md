@@ -1,6 +1,6 @@
 # Querify Analytics — Estado del proyecto
 
-Última actualización: 5 de noviembre de 2026
+Última actualización: 24 de noviembre de 2026
 
 ## Qué es
 
@@ -38,6 +38,20 @@ tiempo. Decisiones tomadas en esa conversación:
   — sigue siendo la dirección a seguir. Lo que sí se hizo ya: la base de
   instalabilidad de la PWA (manifest) y el rediseño completo del panel
   (ver abajo), más "Prospectos" ya sale del nav.
+
+- [x] **Nuevos planes de pago y cursos de 8 semanas (24 nov 2026)** — desde
+  los grupos de 2027: 24 horas en 8 semanas (3 h por semana) y el alumno
+  elige **4 pagos de $625** (inscripción + cada 2 semanas desde el inicio,
+  $2,500 en total) o **pago único de $2,290** al inscribirse (ahorra $210).
+  Los grupos de 2026 siguen con 5 pagos de $500 hasta terminar; el sistema
+  maneja los dos esquemas a la vez (`src/planes.js`, `cohortes.plan_pagos`,
+  `alumnos.plan`). Si alguien en 4 pagos liquida antes, paga lo que le falta
+  sin descuento (decisión del usuario). Los recordatorios del calendario de
+  fecha límite de pago van por esquema: "/5" para 2026 y "/4" (días 14, 28,
+  42) para 2027. Sitio actualizado (inscripción con selector de plan,
+  precios y 24 h / 8 semanas en cursos e inicio). **Pendiente:** el temario
+  nuevo de cada curso (el usuario lo pasará después); por ahora solo se
+  cambió "a lo largo de las 10 semanas" por 8.
 
 - [x] **Canal de Teams automático por grupo (5 nov 2026)** — antes el
   usuario creaba a mano, el día antes del inicio, el canal privado del grupo

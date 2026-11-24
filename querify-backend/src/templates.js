@@ -36,26 +36,27 @@ const T = {
 // Recordatorio de los pagos 2-5: el texto depende de la etapa (v[6]), que
 // decide revisarPagosPorVencer — 2 días antes, 1 día antes, el día del pago
 // y, ya vencido, uno diario hasta que pague o se dé de baja (9 nov 2026).
-// v = [nombre, curso, n.º de pago, monto, liga, fecha ("14 de noviembre de 2026"), etapa]
+// v = [nombre, curso, n.º de pago, monto, liga, fecha ("14 de noviembre de 2026"), etapa,
+//      total de pagos de su plan (5 o 4, ver planes.js)]
 const ETAPAS_PAGO = {
   proximo: {
-    asunto: 'Se acerca tu fecha de pago — pago {{3}}/5 del curso de {{2}}',
-    intro: 'te recordamos que tu pago {{3}}/5 del curso de {{2}} vence el {{6}}.',
+    asunto: 'Se acerca tu fecha de pago — pago {{3}}/{{8}} del curso de {{2}}',
+    intro: 'te recordamos que tu pago {{3}}/{{8}} del curso de {{2}} vence el {{6}}.',
     fecha: 'Fecha límite de pago',
   },
   manana: {
-    asunto: 'Mañana es tu fecha límite de pago — pago {{3}}/5 del curso de {{2}}',
-    intro: 'mañana, {{6}}, es la fecha límite de tu pago {{3}}/5 del curso de {{2}}.',
+    asunto: 'Mañana es tu fecha límite de pago — pago {{3}}/{{8}} del curso de {{2}}',
+    intro: 'mañana, {{6}}, es la fecha límite de tu pago {{3}}/{{8}} del curso de {{2}}.',
     fecha: 'Fecha límite de pago',
   },
   hoy: {
-    asunto: 'Hoy es tu fecha límite de pago — pago {{3}}/5 del curso de {{2}}',
-    intro: 'hoy, {{6}}, es la fecha límite de tu pago {{3}}/5 del curso de {{2}}.',
+    asunto: 'Hoy es tu fecha límite de pago — pago {{3}}/{{8}} del curso de {{2}}',
+    intro: 'hoy, {{6}}, es la fecha límite de tu pago {{3}}/{{8}} del curso de {{2}}.',
     fecha: 'Fecha límite de pago',
   },
   vencido: {
-    asunto: 'Tu pago {{3}}/5 está vencido — curso de {{2}}',
-    intro: 'tu pago {{3}}/5 del curso de {{2}} venció el {{6}} y todavía no lo hemos recibido.',
+    asunto: 'Tu pago {{3}}/{{8}} está vencido — curso de {{2}}',
+    intro: 'tu pago {{3}}/{{8}} del curso de {{2}} venció el {{6}} y todavía no lo hemos recibido.',
     fecha: 'Venció el',
   },
 };
@@ -80,7 +81,7 @@ const cuerpo = {
 
 ${cierrePago(v)}`, v),
 
-  inscripcion: `¡Hola {{1}}! 🎉 Tu lugar en el curso de {{2}} quedó apartado — recibimos tu primer pago de $500 MXN.
+  inscripcion: `¡Hola {{1}}! 🎉 Tu lugar en el curso de {{2}} quedó apartado — {{4}}.
 
 {{3}}
 
@@ -107,12 +108,21 @@ Instrucciones completas: {{8}}`,
 
 // Párrafo de en medio de "inscripcion" ({{3}}): cambia si el alumno entró a
 // un grupo que ya empezó (liga de inscripción del grupo, ver admin.js) —
-// ahí no tiene sentido "conforme se acerque tu primera clase".
-const siguientePaso = {
-  porIniciar: 'Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso, tu horario y las fechas de los siguientes 4 pagos.',
-  iniciado: 'Tu grupo ya está en curso, así que tu asesor se pondrá en contacto contigo muy pronto para darte la bienvenida, ponerte al día con lo que se ha visto en clase y contarte tu horario y los detalles de tus siguientes pagos.',
+// ahí no tiene sentido "conforme se acerque tu primera clase" — y según su
+// plan (ver planes.js): con pago único ya no hay pagos que explicarle.
+const textoInscripcion = (grupoIniciado, plan = { pagos: 5 }) => {
+  const pagos = plan.pagos === 1 ? '' : grupoIniciado
+    ? ' y los detalles de tus siguientes pagos'
+    : ` y las fechas de los siguientes ${plan.pagos - 1} pagos`;
+  return grupoIniciado
+    ? `Tu grupo ya está en curso, así que tu asesor se pondrá en contacto contigo muy pronto para darte la bienvenida, ponerte al día con lo que se ha visto en clase y contarte tu horario${pagos}.`
+    : `Conforme se acerque la fecha de tu primera clase, tu asesor se pondrá en contacto contigo para darte la bienvenida y contarte los detalles del curso${pagos ? `, tu horario${pagos}` : ' y tu horario'}.`;
 };
-const textoInscripcion = (grupoIniciado) => siguientePaso[grupoIniciado ? 'iniciado' : 'porIniciar'];
+// Lo que se recibió al inscribirse ({{4}} de "inscripcion").
+const pesos = n => `$${Number(n).toLocaleString('en-US')} MXN`;
+const pagoInscripcion = (plan = { pagos: 5, monto: 500 }) => plan.pagos === 1
+  ? `recibimos el pago completo de tu curso, ${pesos(plan.monto)}`
+  : `recibimos tu primer pago de ${pesos(plan.monto)}`;
 
 // Cuántos parámetros usa cada plantilla (para armar el componente body de Meta)
 const numVars = { pago: 5, inscripcion: 2, certificado: 3, transferencia: 8 };
@@ -206,9 +216,9 @@ const contenidoHtml = {
     <p style="margin:0 0 4px;font-size:34px">🎉</p>
     <p style="margin:0 0 16px;font-size:17px;line-height:1.5;color:${T.ink}"><b>¡Hola ${esc(v[0])}!</b></p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${T.okSoft};border-radius:10px;margin:0 0 20px"><tr><td style="padding:16px 18px">
-      <p style="margin:0;font-size:15px;line-height:1.6;color:${T.okInk}">Tu lugar en el curso de <b>${esc(v[1])}</b> quedó apartado — recibimos tu primer pago de <b>$500 MXN</b>.</p>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:${T.okInk}">Tu lugar en el curso de <b>${esc(v[1])}</b> quedó apartado — ${esc(v[3] || pagoInscripcion())}.</p>
     </td></tr></table>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">${esc(v[2] || siguientePaso.porIniciar)}</p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:${T.text}">${esc(v[2] || textoInscripcion(false))}</p>
     <p style="margin:0;font-size:15px;line-height:1.6;color:${T.text}">¡Bienvenido a Querify Analytics! 🙌</p>`,
 
   certificado: (v) => `
@@ -243,4 +253,4 @@ function renderHtml(tipo, vars) {
   return shell({ preheader: asuntoTxt, contenido: gen(vars) });
 }
 
-module.exports = { render, renderHtml, metaBodyParams, numVars, textoInscripcion };
+module.exports = { render, renderHtml, metaBodyParams, numVars, textoInscripcion, pagoInscripcion };

@@ -75,6 +75,7 @@ router.post('/api/inscripcion', async (req, res) => {
       cohorteId, nombre,
       whatsapp: telOk ? { pais, numero } : null,
       correo: correoOk ? correo : null,
+      plan: (b.plan || '').toString(),   // 'cuatro' | 'unico' (grupos de 2027); ver planes.js
       urlExito, urlCancelado,
     });
 
@@ -85,7 +86,7 @@ router.post('/api/inscripcion', async (req, res) => {
       return res.status(502).json({ ok: false, error: 'No se pudo iniciar el pago. Intenta de nuevo en un momento.' });
     }
 
-    if (r.simulado) return res.json({ ok: true, simulado: true, redirect: `/inscripcion-gracias.html?simulado=1&canal=${canal}` });
+    if (r.simulado) return res.json({ ok: true, simulado: true, redirect: `/inscripcion-gracias.html?simulado=1&canal=${canal}&plan=${r.plan}` });
     res.json({ ok: true, url: r.url });
   } catch (err) {
     console.error('[POST /api/inscripcion]', err.message);

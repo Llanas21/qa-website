@@ -5,6 +5,7 @@ const providers = require('./providers');
 const tpl = require('./templates');
 const calendario = require('./calendario');
 const teams = require('./teams');
+const planes = require('./planes');
 
 const HORA = 3600 * 1000;
 
@@ -50,7 +51,7 @@ async function enviarConVars({ pais, numero, correo, canal, tipo, vars, onLog })
 // `etapa`: qué correo toca según la fecha (ver etapaPago en revisarPagosPorVencer).
 async function enviarLinkPago(alumno, pago, url, etapa) {
   const vars = [alumno.nombre, alumno.curso, pago.numero_pago, Math.round(Number(pago.monto)), url,
-    fechaLarga(pago.fecha_vencimiento), etapa];
+    fechaLarga(pago.fecha_vencimiento), etapa, pago.total];
   return enviarConVars({
     pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
     canal: 'correo', tipo: 'pago', vars,
@@ -59,13 +60,14 @@ async function enviarLinkPago(alumno, pago, url, etapa) {
 }
 
 /* ------------------- inscripción, cohortes y pagos ------------------- */
-const PLAN_PAGOS = 5;                     // 5 exhibiciones
-const SEMANAS_PAGO = [0, 2, 4, 6, 8];     // semana relativa al inicio de la cohorte, por pago 1-5
+// Semana (desde el inicio del grupo) en que vence cada pago: igual en todos
+// los planes — 4 pagos usa las primeras 4, pago único solo la 0 (ver planes.js).
+const SEMANAS_PAGO = [0, 2, 4, 6, 8];
 
 // Cohortes de un curso con cupo disponible (para el selector del sitio).
 async function cohortesDisponibles(curso) {
   const { rows } = await query(
-    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados,
+    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados, plan_pagos,
             (cupo_maximo - lugares_ocupados) AS lugares_disponibles
      FROM cohortes
      WHERE curso = $1 AND fecha_inicio IS NOT NULL AND fecha_inicio >= CURRENT_DATE
@@ -80,7 +82,7 @@ async function cohortesDisponibles(curso) {
 // mientras no haya terminado y tenga cupo.
 async function grupoParaLiga(id) {
   const { rows } = await query(
-    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados,
+    `SELECT id, curso, modalidad, dias, fecha_inicio, cupo_maximo, lugares_ocupados, plan_pagos,
             (cupo_maximo - lugares_ocupados) AS lugares_disponibles
      FROM cohortes
      WHERE id = $1 AND fecha_inicio IS NOT NULL AND COALESCE(fecha_fin, fecha_inicio) >= CURRENT_DATE
@@ -106,10 +108,13 @@ function baseUrl() {
 // de cupo es solo para no generar un link de pago si la cohorte ya está llena
 // en este instante; la ocupación real y autoritativa del cupo pasa en
 // confirmarInscripcion(), al confirmarse el pago.
-async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, urlExito, urlCancelado }) {
+async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, plan: clavePlan, urlExito, urlCancelado }) {
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte || !cohorte.fecha_inicio) return { ok: false, motivo: 'cohorte_no_existe' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
+  // Sin plan (o uno que el grupo no ofrece) → el primero del grupo: 4 pagos
+  // en los de 2027, 5 pagos en los de 2026.
+  const plan = planes.plan(planes.planValido(cohorte, clavePlan) || planes.planPorDefecto(cohorte));
 
   // Cliente de Stripe (uno por correo) para que la página de pago ofrezca
   // también transferencia a su CLABE fija. Si abrió antes otro pago de
@@ -128,14 +133,18 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, urlExit
   }
 
   const r = await providers.crearCheckoutSession({
-    descripcion: `Pago 1/5 — curso de ${cohorte.curso} (apartado de lugar)`,
-    monto: config.pagos.monto,
+    descripcion: plan.pagos === 1
+      ? `Pago único — curso de ${cohorte.curso}`
+      : `Pago 1/${plan.pagos} — curso de ${cohorte.curso} (apartado de lugar)`,
+    monto: plan.monto,
     metadata: {
-      tipo: 'inscripcion', cohorte_id: String(cohorteId), nombre,
+      tipo: 'inscripcion', cohorte_id: String(cohorteId), plan: plan.clave, nombre,
       whatsapp_pais: whatsapp?.pais || '', whatsapp: whatsapp?.numero || '',
       correo: correo || '',
     },
-    urlExito, urlCancelado, customerId,
+    // La página de gracias dice "primer pago de $625" o "pago completo" según el plan.
+    urlExito: `${urlExito}${urlExito.includes('?') ? '&' : '?'}plan=${plan.clave}`,
+    urlCancelado, customerId,
   });
   if (!r.ok) return { ok: false, motivo: 'error_stripe', error: r.error };
 
@@ -143,18 +152,18 @@ async function iniciarInscripcion({ cohorteId, nombre, whatsapp, correo, urlExit
     // Sin credenciales reales de Stripe: se completa la inscripción de una vez,
     // igual que el resto del sistema simula un envío exitoso sin cuenta externa.
     const alumno = await confirmarInscripcion({
-      cohorteId, nombre, whatsapp, correo,
+      cohorteId, nombre, whatsapp, correo, plan: plan.clave,
       stripeSessionId: r.sessionId, stripePaymentIntentId: null,
     });
-    return { ok: true, simulado: true, alumno };
+    return { ok: true, simulado: true, alumno, plan: plan.clave };
   }
-  return { ok: true, simulado: false, url: r.url };
+  return { ok: true, simulado: false, url: r.url, plan: plan.clave };
 }
 
 // Confirma el pago 1: crea al alumno, genera los 5 pagos programados (el 1 ya
 // 'pagado') y ocupa el cupo de la cohorte. Idempotente por stripe_session_id,
 // para no duplicar el alta si Stripe reenvía el mismo webhook.
-async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, stripeSessionId, stripePaymentIntentId, stripeCustomerId = null, metodo = 'stripe', enviarBienvenida = true }) {
+async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, plan: clavePlan, stripeSessionId, stripePaymentIntentId, stripeCustomerId = null, metodo = 'stripe', enviarBienvenida = true }) {
   if (stripeSessionId) {
     const existe = await query(
       `SELECT a.* FROM alumnos a JOIN pagos p ON p.alumno_id = a.id
@@ -164,11 +173,14 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
 
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte) throw new Error(`cohorte #${cohorteId} no existe`);
+  // Sesiones de Stripe abiertas antes del cambio de planes no traen plan:
+  // toman el del grupo (5 pagos en los de 2026).
+  const plan = planes.plan(planes.planValido(cohorte, clavePlan) || planes.planPorDefecto(cohorte));
 
   const { rows: [alumno] } = await query(
-    `INSERT INTO alumnos (cohorte_id, nombre, whatsapp_pais, whatsapp, correo, stripe_customer_id)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null, stripeCustomerId]);
+    `INSERT INTO alumnos (cohorte_id, nombre, whatsapp_pais, whatsapp, correo, stripe_customer_id, plan)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [cohorteId, nombre, whatsapp?.pais || null, whatsapp?.numero || null, correo || null, stripeCustomerId, plan.clave]);
 
   // Su CLABE fija (la misma que vio si pagó por transferencia) para la
   // tarjeta "Transferencia" del panel. No es indispensable: si falla, se
@@ -187,13 +199,13 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
   // del proceso (evita que un TZ adelantado a UTC recorra la fecha un día).
   const base = new Date(cohorte.fecha_inicio);
   const baseUTC = Date.UTC(base.getFullYear(), base.getMonth(), base.getDate());
-  for (let n = 1; n <= PLAN_PAGOS; n++) {
+  for (let n = 1; n <= plan.pagos; n++) {
     const venc = new Date(baseUTC + SEMANAS_PAGO[n - 1] * 7 * 24 * HORA);
     const esPago1 = n === 1;
     await query(
       `INSERT INTO pagos (alumno_id, numero_pago, monto, fecha_vencimiento, estado, metodo, stripe_session_id, stripe_payment_intent_id, fecha_pago)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [alumno.id, n, config.pagos.monto, venc.toISOString().slice(0, 10),
+      [alumno.id, n, plan.monto, venc.toISOString().slice(0, 10),
         esPago1 ? 'pagado' : 'pendiente', esPago1 ? metodo : null,
         esPago1 ? stripeSessionId : null, esPago1 ? stripePaymentIntentId : null,
         esPago1 ? new Date() : null]);
@@ -202,7 +214,7 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
   await query(`UPDATE cohortes SET lugares_ocupados = lugares_ocupados + 1 WHERE id = $1`, [cohorteId]);
   await registrarMensajeAlumno(alumno.id, {
     tipo: 'pago', canal: 'sistema', estado: 'nota',
-    contenido: `Inscripción confirmada (método: ${metodo}). Pago 1/5 recibido, lugar apartado en la cohorte #${cohorteId}.`,
+    contenido: `Inscripción confirmada (método: ${metodo}, plan: ${plan.nombre}). ${plan.pagos === 1 ? 'Pago único recibido' : `Pago 1/${plan.pagos} recibido`}, lugar apartado en ${calendario.codigoGrupo(cohorte) || `la cohorte #${cohorteId}`}.`,
   });
 
   // Confirmación real al alumno (WhatsApp→correo, igual que el resto del
@@ -211,7 +223,7 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
   // apagarlo (ej. registrar a alguien de un grupo que ya va a la mitad).
   if (enviarBienvenida) {
     const iniciado = calendario.ymd(cohorte.fecha_inicio) < calendario.ymd(new Date());
-    const vars = [alumno.nombre, cohorte.curso, tpl.textoInscripcion(iniciado)];
+    const vars = [alumno.nombre, cohorte.curso, tpl.textoInscripcion(iniciado, plan), tpl.pagoInscripcion(plan)];
     await enviarConVars({
       pais: alumno.whatsapp_pais, numero: alumno.whatsapp, correo: alumno.correo,
       canal: 'correo', tipo: 'inscripcion', vars,
@@ -235,14 +247,14 @@ async function confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, strip
 // flujo automático de recordatorios de los pagos 2-5 — solo que sin pasar
 // por Stripe para el pago 1. Valida cupo igual que iniciarInscripcion, para
 // no dar de alta a alguien en una cohorte ya llena por accidente.
-async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo, enviarBienvenida = true }) {
+async function altaAlumnoManual({ cohorteId, nombre, whatsapp, correo, plan, enviarBienvenida = true }) {
   const cohorte = await cohortePorId(cohorteId);
   if (!cohorte) return { ok: false, motivo: 'cohorte_no_existe' };
   // El plan de pagos se calcula desde fecha_inicio; sin ella, new Date(null)
   // da 1970 y los pagos 2-5 quedan vencidos de inmediato (pasó en producción).
   if (!cohorte.fecha_inicio) return { ok: false, motivo: 'sin_fecha' };
   if (cohorte.lugares_ocupados >= cohorte.cupo_maximo) return { ok: false, motivo: 'sin_cupo' };
-  const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, metodo: 'manual', enviarBienvenida });
+  const alumno = await confirmarInscripcion({ cohorteId, nombre, whatsapp, correo, plan, metodo: 'manual', enviarBienvenida });
   return { ok: true, alumno };
 }
 
@@ -278,8 +290,8 @@ async function actualizarCohorte(id, { fechaInicio, fechaFin, dias, cupo }) {
   if (!inicio) fin = null;
   else if (cambioInicio && !tocoFin) fin = viejoInicio && viejoFin
     ? calendario.sumarDias(viejoFin, calendario.diasEntre(viejoInicio, inicio))
-    : calendario.fechaFinPorDefecto(inicio, d);
-  else if (!fin) fin = calendario.fechaFinPorDefecto(inicio, d);
+    : calendario.fechaFinPorDefecto(inicio, d, planes.semanasDe(c));
+  else if (!fin) fin = calendario.fechaFinPorDefecto(inicio, d, planes.semanasDe(c));
   if (inicio && fin < inicio) return { ok: false, error: `${calendario.codigoGrupo({ ...c, fecha_inicio: inicio, dias: d })}: el último día no puede ser antes del inicio.` };
 
   const nuevoCupo = Number.isInteger(cupo) && cupo > 0 ? cupo : c.cupo_maximo;
@@ -453,7 +465,7 @@ async function confirmarPago({ pagoId, metodo = 'stripe', stripeSessionId = null
   if (pago) {
     await registrarMensajeAlumno(pago.alumno_id, {
       tipo: 'pago', canal: 'sistema', estado: 'nota',
-      contenido: `Pago ${pago.numero_pago}/5 marcado como pagado (${metodo}).`,
+      contenido: `Pago ${pago.numero_pago} ($${Math.round(Number(pago.monto))} MXN) marcado como pagado (${metodo}).`,
     });
     // Si para este mismo pago dejó abierta una transferencia (eligió
     // "transferencia" en una liga y luego pagó por otra vía), se cancela:
@@ -524,7 +536,7 @@ async function aplicarSaldo(customerId) {
     const monto = Number(p.monto);
     if (saldo < monto) break;
     const r = await providers.cobrarDeSaldo({
-      customerId, monto, descripcion: `Pago ${p.numero_pago}/5 — transferencia`,
+      customerId, monto, descripcion: `Pago ${p.numero_pago} — transferencia`,
       metadata: { tipo: 'transferencia', pago_id: String(p.id) },
     });
     if (!r.ok) { console.error(`[transferencia] no se pudo aplicar al pago #${p.id}: ${r.error}`); break; }
@@ -557,13 +569,18 @@ async function enviarDatosTransferencia(session) {
   let destino;
   if (meta.tipo === 'inscripcion') {
     const cohorte = await cohortePorId(Number(meta.cohorte_id));
-    destino = { nombre: meta.nombre, correo: meta.correo, curso: cohorte?.curso || '', concepto: 'pago 1 de 5, con el que apartas tu lugar', alumnoId: null };
+    const plan = planes.plan(meta.plan || (cohorte && planes.planPorDefecto(cohorte)));
+    destino = {
+      nombre: meta.nombre, correo: meta.correo, curso: cohorte?.curso || '', alumnoId: null,
+      concepto: plan.pagos === 1 ? 'pago único del curso' : `pago 1 de ${plan.pagos}, con el que apartas tu lugar`,
+    };
   } else if (meta.tipo === 'pago' && meta.pago_id) {
     const { rows: [p] } = await query(
-      `SELECT p.numero_pago, a.id AS alumno_id, a.nombre, a.correo, c.curso FROM pagos p
-       JOIN alumnos a ON a.id = p.alumno_id JOIN cohortes c ON c.id = a.cohorte_id WHERE p.id = $1`, [Number(meta.pago_id)]);
+      `SELECT p.numero_pago, a.id AS alumno_id, a.nombre, a.correo, c.curso,
+              (SELECT count(*) FROM pagos x WHERE x.alumno_id = a.id)::int AS total
+       FROM pagos p JOIN alumnos a ON a.id = p.alumno_id JOIN cohortes c ON c.id = a.cohorte_id WHERE p.id = $1`, [Number(meta.pago_id)]);
     if (!p) return;
-    destino = { nombre: p.nombre, correo: p.correo, curso: p.curso, concepto: `pago ${p.numero_pago} de 5`, alumnoId: p.alumno_id };
+    destino = { nombre: p.nombre, correo: p.correo, curso: p.curso, concepto: `pago ${p.numero_pago} de ${p.total}`, alumnoId: p.alumno_id };
   } else return;
 
   const t = est.transferencia;
@@ -588,7 +605,7 @@ async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.com
   const metodo = esTransferencia ? 'transferencia' : 'stripe';
   if (meta.tipo === 'inscripcion') {
     await confirmarInscripcion({
-      cohorteId: Number(meta.cohorte_id), nombre: meta.nombre,
+      cohorteId: Number(meta.cohorte_id), nombre: meta.nombre, plan: meta.plan || null,
       whatsapp: meta.whatsapp ? { pais: meta.whatsapp_pais, numero: meta.whatsapp } : null,
       correo: meta.correo || null,
       stripeSessionId: session.id, stripePaymentIntentId: session.payment_intent || null,
@@ -601,10 +618,12 @@ async function procesarWebhookStripe(session, tipoEvento = 'checkout.session.com
     });
     if (!pago) {
       // Ya estaba pagado por otra vía: es un cobro doble, hay que revisarlo a mano.
-      const { rows: [p] } = await query(`SELECT alumno_id, numero_pago FROM pagos WHERE id = $1`, [Number(meta.pago_id)]);
+      const { rows: [p] } = await query(
+        `SELECT alumno_id, numero_pago, (SELECT count(*) FROM pagos x WHERE x.alumno_id = pagos.alumno_id)::int AS total
+         FROM pagos WHERE id = $1`, [Number(meta.pago_id)]);
       if (p) await registrarMensajeAlumno(p.alumno_id, {
         tipo: 'pago', canal: 'sistema', estado: 'nota',
-        contenido: `⚠ Llegó otro pago (${metodo}) del pago ${p.numero_pago}/5, que ya estaba pagado. Revisa en Stripe si hay que reembolsarlo (${session.payment_intent || session.id}).`,
+        contenido: `⚠ Llegó otro pago (${metodo}) del pago ${p.numero_pago}/${p.total}, que ya estaba pagado. Revisa en Stripe si hay que reembolsarlo (${session.payment_intent || session.id}).`,
       });
     }
   }
@@ -642,7 +661,8 @@ async function revisarPagosPorVencer() {
   if (config.automatizacionPausada || hora < config.pagos.horaEnvio) return 0;
 
   const { rows } = await query(
-    `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, a.stripe_customer_id, c.curso
+    `SELECT p.*, a.nombre, a.whatsapp_pais, a.whatsapp, a.correo, a.stripe_customer_id, c.curso,
+            (SELECT count(*) FROM pagos x WHERE x.alumno_id = p.alumno_id)::int AS total
      FROM pagos p
      JOIN alumnos  a ON a.id = p.alumno_id
      JOIN cohortes c ON c.id = a.cohorte_id
@@ -676,10 +696,11 @@ async function revisarPagosPorVencer() {
     }
 
     const r = await providers.crearCheckoutSession({
-      descripcion: `Pago ${p.numero_pago}/5 — curso de ${p.curso}`,
+      descripcion: `Pago ${p.numero_pago}/${p.total} — curso de ${p.curso}`,
       monto: Number(p.monto),
       metadata: { tipo: 'pago', pago_id: String(p.id) },
-      urlExito: `${baseUrl()}/inscripcion-gracias.html?pago=${p.numero_pago}`,
+      // La página de gracias muestra "pago N/total" y el monto (ver inscripcion-gracias.html).
+      urlExito: `${baseUrl()}/inscripcion-gracias.html?pago=${p.numero_pago}&de=${p.total}&monto=${Math.round(Number(p.monto))}`,
       urlCancelado: `${baseUrl()}/admin`,
       customerId,
     });
@@ -694,7 +715,7 @@ async function revisarPagosPorVencer() {
       // cuando alguien transfiere fuera de Stripe.
       await registrarMensajeAlumno(p.alumno_id, {
         tipo: 'pago', canal: 'correo', estado: 'simulado',
-        contenido: `[SIMULADO] Liga de pago ${p.numero_pago}/5 ($${p.monto} MXN) — sin credenciales de Stripe.`,
+        contenido: `[SIMULADO] Liga de pago ${p.numero_pago}/${p.total} ($${p.monto} MXN) — sin credenciales de Stripe.`,
       });
       enviados++;
       continue;

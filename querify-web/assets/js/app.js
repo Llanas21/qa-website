@@ -99,6 +99,25 @@ function initInscripcionForm() {
   const grupoLiga = Number(new URLSearchParams(location.search).get("grupo")) || null;
   const hoy = new Date().toISOString().slice(0, 10);
 
+  // Planes según el grupo elegido (ver planes.js en el backend): desde 2027 se
+  // elige entre 4 pagos de $625 o pago único de $2,290; los grupos de 2026
+  // (solo llegan aquí por la liga de un grupo ya iniciado) tienen su plan de
+  // 5 pagos y no hay nada que elegir.
+  const planCard = document.getElementById("insc-plan-card");
+  const planesNuevos = document.getElementById("planes-nuevos");
+  const planAnterior = document.getElementById("plan-anterior");
+  const grupoAnterior = () => {
+    const sel = cohortesBox.querySelector('input[name="cohorte"]:checked');
+    return !!sel && sel.dataset.plan === "anterior";
+  };
+  function mostrarPlanes() {
+    const anterior = grupoAnterior();
+    if (planCard) planCard.style.display = anterior ? "none" : "";
+    if (planesNuevos) planesNuevos.style.display = anterior ? "none" : "";
+    if (planAnterior) planAnterior.hidden = !anterior;
+  }
+  cohortesBox.addEventListener("change", mostrarPlanes);
+
   async function cargarCohortes() {
     clearError(cohorteErr);
     cohortesBox.innerHTML = '<p class="sub" style="margin:0">Cargando fechas disponibles…</p>';
@@ -125,10 +144,11 @@ function initInscripcionForm() {
       }
       cohortesBox.innerHTML = cohortes.map((c, i) => `
         <label class="cohorte-opt">
-          <input type="radio" name="cohorte" value="${c.id}" ${i === 0 ? "checked" : ""}>
+          <input type="radio" name="cohorte" value="${c.id}" data-plan="${c.plan_pagos || "nuevo"}" ${i === 0 ? "checked" : ""}>
           <span class="co-main"><b>${labelModalidad(c)}</b><span>${String(c.fecha_inicio).slice(0, 10) < hoy ? "Inició el " : ""}${fmtFecha(c.fecha_inicio)}</span></span>
           <span class="co-cupo">${c.lugares_disponibles} lugar${c.lugares_disponibles === 1 ? "" : "es"}</span>
         </label>`).join("");
+      mostrarPlanes();
     } catch (err) {
       cohortesBox.innerHTML = '<p class="sub" style="margin:0">No se pudieron cargar las fechas. Recarga la página o escríbenos por WhatsApp.</p>';
     }
@@ -196,6 +216,7 @@ function initInscripcionForm() {
       curso: cursoSelect.value,
       cohorteId: Number(cohorteInput.value),
       grupo: grupoLiga,
+      plan: grupoAnterior() ? null : (document.querySelector('input[name="plan"]:checked') || {}).value || "cuatro",
       whatsapp: tel ? { pais: cc, numero: tel } : null,
       correo: correo || null,
       origen: "sitio_web",

@@ -267,3 +267,33 @@ CREATE TABLE IF NOT EXISTS teams_conexion (
   conectado_en     TIMESTAMPTZ,
   error            TEXT
 );
+
+-- Planes de pago (24 nov 2026, ver src/planes.js). Desde los grupos de 2027
+-- el curso dura 8 semanas y el alumno elige 4 pagos de $625 o pago único de
+-- $2,290; los grupos de 2026 siguen con 5 pagos de $500 hasta terminar.
+-- Todo esto corre una sola vez, al crear cada columna:
+--   - cohortes.plan_pagos: 'anterior' para los grupos que empiezan antes de
+--     2027, 'nuevo' para los demás y para todos los que se creen después.
+--   - alumnos.plan: los inscritos hasta hoy quedan con 'cinco'.
+--   - recordatorios.plan_pagos (NULL = todos los grupos): las fechas límite
+--     de pago "/5" quedan solo para grupos 'anterior' y se agregan las "/4"
+--     (días 14, 28, 42) para los 'nuevo'.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cohortes' AND column_name = 'plan_pagos') THEN
+    ALTER TABLE cohortes ADD COLUMN plan_pagos TEXT NOT NULL DEFAULT 'nuevo';
+    UPDATE cohortes SET plan_pagos = 'anterior' WHERE fecha_inicio < '2027-01-01';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'alumnos' AND column_name = 'plan') THEN
+    ALTER TABLE alumnos ADD COLUMN plan TEXT;
+    UPDATE alumnos SET plan = 'cinco';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'recordatorios' AND column_name = 'plan_pagos') THEN
+    ALTER TABLE recordatorios ADD COLUMN plan_pagos TEXT;
+    UPDATE recordatorios SET plan_pagos = 'anterior' WHERE titulo LIKE 'Fecha límite del pago _/5';
+    INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, solo_con_alumnos, plan_pagos, orden)
+    SELECT t, 'inicio', d, NULL, 'Revisar en el panel → Pagos quién no ha pagado.', 'general', true, 'nuevo',
+           (SELECT COALESCE(MAX(orden), 0) FROM recordatorios) + n
+    FROM (VALUES (1, 'Fecha límite del pago 2/4', 14), (2, 'Fecha límite del pago 3/4', 28), (3, 'Fecha límite del pago 4/4', 42)) AS v(n, t, d);
+    UPDATE cohortes SET calendario_pendiente = true WHERE fecha_inicio IS NOT NULL;
+  END IF;
+END $$;

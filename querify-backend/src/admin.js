@@ -15,6 +15,7 @@ const certificados = require('./certificados');
 const calendario = require('./calendario');
 const providers = require('./providers');
 const teams = require('./teams');
+const planes = require('./planes');
 
 // Estado del canal de Teams de un grupo (ver teams.js), para Cohortes y la
 // página del grupo. Vacío si Teams no está activado o el grupo no tiene fecha.
@@ -493,6 +494,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
         <div class="field" style="margin-bottom:0"><label>Cupo máximo</label>
           <input type="text" inputmode="numeric" name="cupo_${r.id}" value="${r.cupo_maximo}"></div>
       </div>
+      <div class="li-meta" style="margin-top:10px">Plan: ${planes.planesDe(r).map(k => esc(planes.plan(k).nombre)).join(' o ')} · ${planes.semanasDe(r)} semanas</div>
       ${estadoTeams(r)}
       <a href="/admin/grupo/${r.id}" style="display:inline-block;margin-top:12px;font-size:13px;font-weight:600">Ver alumnos de este grupo →</a>
     </div>`;
@@ -503,7 +505,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
 
   res.send(layout('Cohortes', `
     <h1>Cohortes</h1>
-    <p class="sub">Si cambias la fecha de inicio, el último día se recorre igual, los pagos pendientes de sus alumnos se recalculan y sus recordatorios se mueven en Outlook. El último día se calcula solo a 10 semanas; cámbialo si hay días festivos.</p>
+    <p class="sub">Si cambias la fecha de inicio, el último día se recorre igual, los pagos pendientes de sus alumnos se recalculan y sus recordatorios se mueven en Outlook. El último día se calcula solo a 8 semanas (10 en los grupos de 2026, que siguen con el plan de 5 pagos); cámbialo si hay días festivos.</p>
     ${await avisoCalendario()}
     ${await avisoTeams(req)}
     <form method="post" action="/admin/cohortes">
@@ -524,7 +526,7 @@ router.get('/cohortes', requireAuth, async (req, res) => {
           <div class="field" id="nc-dias"><label>Días</label>
             <select name="dias"><option value="">Los de siempre del curso</option><option value="LM">LM</option><option value="MJ">MJ</option></select></div>
           <div class="field"><label>Fecha de inicio</label><input type="date" name="fecha_inicio" required></div>
-          <div class="field"><label>Último día <span style="font-weight:400;color:var(--muted)">(opcional, por defecto 10 semanas)</span></label><input type="date" name="fecha_fin"></div>
+          <div class="field"><label>Último día <span style="font-weight:400;color:var(--muted)">(opcional, por defecto 8 semanas)</span></label><input type="date" name="fecha_fin"></div>
           <div class="field"><label>Cupo</label><input type="text" inputmode="numeric" name="cupo_maximo" placeholder="Cupo" value="10"></div>
           <button class="btn block" type="submit">Agregar cohorte</button>
         </form>
@@ -591,6 +593,12 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
   const selAlcance = (name, val) => `<select name="${name}">
       <option value="grupo"${val !== 'general' ? ' selected' : ''}>Cada grupo (uno por grupo)</option>
       <option value="general"${val === 'general' ? ' selected' : ''}>General (uno solo si coinciden)</option></select>`;
+  // Esquema de pagos de los grupos a los que aplica (ver planes.js): las
+  // fechas límite "/5" son de los grupos de 2026 y las "/4" de los de 2027.
+  const selPlan = (name, val) => `<select name="${name}">
+      <option value=""${!val ? ' selected' : ''}>Todos los grupos</option>
+      <option value="anterior"${val === 'anterior' ? ' selected' : ''}>Solo grupos de 2026 (plan de 5 pagos)</option>
+      <option value="nuevo"${val === 'nuevo' ? ' selected' : ''}>Solo grupos desde 2027 (4 pagos o pago único)</option></select>`;
   const selAncla = (name, val) => `<select name="${name}">
       <option value="inicio"${val !== 'fin' ? ' selected' : ''}>Inicio del curso</option>
       <option value="fin"${val === 'fin' ? ' selected' : ''}>Último día del curso</option></select>`;
@@ -600,6 +608,7 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
       <div class="field" style="margin-bottom:10px"><label>Recordatorio</label>
         <input type="text" name="titulo_${r.id}" value="${esc(r.titulo)}" required></div>
       <div class="field" style="margin-bottom:10px"><label>Aplica a</label>${selAlcance(`alcance_${r.id}`, r.alcance)}</div>
+      <div class="field" style="margin-bottom:10px"><label>Grupos</label>${selPlan(`plan_${r.id}`, r.plan_pagos)}</div>
       <div class="grid2">
         <div class="field" style="margin-bottom:10px"><label>Contar desde</label>${selAncla(`ancla_${r.id}`, r.ancla)}</div>
         <div class="field" style="margin-bottom:10px"><label>Día</label>
@@ -635,6 +644,7 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
         <form method="post" action="/admin/recordatorios/nuevo">
           <div class="field"><label>Recordatorio</label><input type="text" name="titulo" required></div>
           <div class="field"><label>Aplica a</label>${selAlcance('alcance', 'grupo')}</div>
+          <div class="field"><label>Grupos</label>${selPlan('plan', '')}</div>
           <div class="field"><label>Contar desde</label>${selAncla('ancla', 'inicio')}</div>
           <div class="grid2">
             <div class="field"><label>Día</label><input type="number" name="desde" value="0" required></div>
@@ -649,11 +659,12 @@ router.get('/recordatorios', requireAuth, async (req, res) => {
 });
 
 const entero = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
+const planRecordatorio = v => (['anterior', 'nuevo'].includes(v) ? v : null);
 
 router.post('/recordatorios', requireAuth, async (req, res) => {
   const recs = {};
   for (const [key, val] of Object.entries(req.body || {})) {
-    const m = key.match(/^(titulo|alcance|ancla|desde|hasta|notas|borrar|solo)_(\d+)$/);
+    const m = key.match(/^(titulo|alcance|ancla|desde|hasta|notas|borrar|solo|plan)_(\d+)$/);
     if (m) (recs[m[2]] ||= {})[m[1]] = String(val).trim();
   }
   for (const [id, r] of Object.entries(recs)) {
@@ -661,20 +672,20 @@ router.post('/recordatorios', requireAuth, async (req, res) => {
     const desde = entero(r.desde);
     if (!r.titulo || desde === null) continue;
     // Una casilla desmarcada no se envía: sin `solo_<id>` = desmarcada.
-    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6, alcance = $7, solo_con_alumnos = $8 WHERE id = $1`,
-      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null, r.alcance === 'general' ? 'general' : 'grupo', r.solo === 'on']);
+    await query(`UPDATE recordatorios SET titulo = $2, ancla = $3, dia_desde = $4, dia_hasta = $5, notas = $6, alcance = $7, solo_con_alumnos = $8, plan_pagos = $9 WHERE id = $1`,
+      [id, r.titulo, r.ancla === 'fin' ? 'fin' : 'inicio', desde, entero(r.hasta), r.notas || null, r.alcance === 'general' ? 'general' : 'grupo', r.solo === 'on', planRecordatorio(r.plan)]);
   }
   await calendario.marcarPendientes();
   res.redirect('/admin/recordatorios?ok=1');
 });
 
 router.post('/recordatorios/nuevo', requireAuth, async (req, res) => {
-  const { titulo, alcance, ancla, desde, hasta, notas, solo } = req.body || {};
+  const { titulo, alcance, ancla, desde, hasta, notas, solo, plan } = req.body || {};
   if (titulo && entero(desde) !== null) {
     await query(
-      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, solo_con_alumnos, orden)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
-      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null, alcance === 'general' ? 'general' : 'grupo', solo === 'on']);
+      `INSERT INTO recordatorios (titulo, ancla, dia_desde, dia_hasta, notas, alcance, solo_con_alumnos, plan_pagos, orden)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,(SELECT COALESCE(MAX(orden), 0) + 1 FROM recordatorios))`,
+      [titulo.trim(), ancla === 'fin' ? 'fin' : 'inicio', entero(desde), entero(hasta), (notas || '').trim() || null, alcance === 'general' ? 'general' : 'grupo', solo === 'on', planRecordatorio(plan)]);
     await calendario.marcarPendientes();
   }
   res.redirect('/admin/recordatorios?ok=1');
@@ -718,7 +729,8 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
   const { rows } = await query(`
     SELECT a.*,
            COUNT(p.*) FILTER (WHERE p.estado = 'pagado') AS pagados,
-           COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos
+           COUNT(p.*) FILTER (WHERE p.estado = 'vencido') AS vencidos,
+           COUNT(p.*) AS total
     FROM alumnos a
     LEFT JOIN pagos p ON p.alumno_id = a.id
     WHERE a.cohorte_id = $1
@@ -730,7 +742,7 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
       <div class="li-top">
         <div class="li-title">${esc(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</div>
         <div class="li-right">
-          <span class="tag ${a.vencidos > 0 ? 'bad' : a.pagados >= 5 ? 'ok' : ''}">${a.pagados} / 5 pagados</span>
+          <span class="tag ${a.vencidos > 0 ? 'bad' : Number(a.pagados) >= Number(a.total) ? 'ok' : ''}">${Number(a.total) === 1 ? (a.pagados > 0 ? 'pago único' : 'sin pagar') : `${a.pagados} / ${a.total} pagados`}</span>
           ${a.vencidos > 0 ? `<div style="margin-top:5px"><span class="tag bad">${a.vencidos} vencido(s)</span></div>` : ''}
         </div>
       </div>
@@ -779,6 +791,9 @@ router.get('/grupo/:id', requireAuth, async (req, res) => {
           <div class="field"><label>Correo</label><input type="email" name="correo" placeholder="correo@ejemplo.com" required></div>
           <div class="field"><label>WhatsApp <span style="font-weight:400">(opcional, se asume +52)</span></label>
             <input type="tel" inputmode="numeric" name="whatsapp" placeholder="10 dígitos"></div>
+          ${planes.planesDe(cohorte).length > 1 ? `<div class="field"><label>Plan de pago</label>
+            <select name="plan">${planes.planesDe(cohorte).map(k => `<option value="${k}">${esc(planes.plan(k).nombre)}</option>`).join('')}</select>
+            <p class="sub" style="margin:6px 0 0;font-size:12.5px">El primer pago (o el pago único) se marca como ya pagado.</p></div>` : ''}
           <label class="field" style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);cursor:pointer">
             <input type="checkbox" name="bienvenida" checked style="width:18px;height:18px;accent-color:var(--accent-strong)">
             Enviar correo de bienvenida
@@ -801,7 +816,7 @@ router.post('/alumnos/nuevo', requireAuth, async (req, res) => {
   }
 
   const r = await engine.altaAlumnoManual({
-    cohorteId, nombre, correo,
+    cohorteId, nombre, correo, plan: (b.plan || '').toString(),
     whatsapp: numero ? { pais: '+52', numero } : null,
     // Un checkbox desmarcado no se envía en el formulario.
     enviarBienvenida: b.bienvenida === 'on',
@@ -827,7 +842,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
     <div class="pago-row ${p.estado}">
       <div class="pago-num">${p.estado === 'pagado' ? '✓' : p.numero_pago}</div>
       <div class="pago-info">
-        <div class="monto">Pago ${p.numero_pago}/5 — $${Number(p.monto)} MXN</div>
+        <div class="monto">${pagos.length === 1 ? 'Pago único' : `Pago ${p.numero_pago}/${pagos.length}`} — $${Number(p.monto).toLocaleString('en-US')} MXN</div>
         <div class="venc">Vence ${fmtDia(p.fecha_vencimiento)}${p.fecha_pago ? ` · pagado ${fmt(p.fecha_pago)}${p.metodo ? ` (${p.metodo})` : ''}` : ''}</div>
       </div>
       <div class="pago-right">
@@ -838,7 +853,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
       </div>
     </div>`).join('');
 
-  const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta — ya tiene su plan de 5 pagos.</p>`
+  const aviso = req.query.creado ? `<p class="pill ok">✓ Alumno dado de alta (${esc(planes.plan(a.plan).nombre)}).</p>`
     : req.query.baja ? `<p class="pill ok">✓ Alumno dado de baja: su lugar quedó libre y sus pagos pendientes se cancelaron.</p>`
     : req.query.clabe_error ? `<p class="pill bad">✗ ${esc(req.query.clabe_error)}</p>`
     : req.query.editado ? `<p class="pill ok">✓ Datos actualizados.</p>`
@@ -919,7 +934,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
   const mensajeClabe = a.clabe ? [
     `Hola ${a.nombre.split(' ')[0]}, para tus pagos del curso de ${a.curso} puedes transferir a esta CLABE, que es solo tuya:`,
     '', a.clabe, `Banco: ${a.clabe_banco}`, `A nombre de: ${a.clabe_titular}`, '',
-    `Cada pago es de $${config.pagos.monto} MXN y se registra solo en cuanto llega. Guárdala en tu banco para tus siguientes pagos.`,
+    `Cada pago es de $${planes.plan(a.plan).monto} MXN y se registra solo en cuanto llega. Guárdala en tu banco para tus siguientes pagos.`,
   ].join('\n') : '';
   // Correos con los que está (o va a estar) en el canal de Teams de su grupo.
   let tarjetaTeams = '';
@@ -974,7 +989,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
             onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='Esperando a Stripe…'">
         <p class="sub" style="margin:0 0 8px">Modo de prueba: simula que el alumno transfirió.</p>
         <div class="actions" style="margin-top:0">
-          <input name="monto" type="number" min="1" step="1" value="${config.pagos.monto}" style="max-width:130px" aria-label="Monto en MXN">
+          <input name="monto" type="number" min="1" step="1" value="${planes.plan(a.plan).monto}" style="max-width:130px" aria-label="Monto en MXN">
           <button class="btn ghost" type="submit">Simular transferencia</button>
         </div>
       </form>` : ''}` : `
@@ -986,7 +1001,7 @@ router.get('/alumno/:id', requireAuth, async (req, res) => {
 
   res.send(layout(a.nombre, `
     <h1>${copiable(a.nombre)}${a.fecha_baja ? ' <span class="tag bad">baja</span>' : a.archivado ? ' <span class="tag">archivado</span>' : ''}</h1>
-    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)}${a.fecha_baja ? ` · baja el ${fmt(a.fecha_baja)}` : ''}</p>
+    <p class="sub">Inscrito el ${fmt(a.fecha_alta)} · curso de ${esc(a.curso)} (${label(a.modalidad)}), inicia el ${fmtDia(a.fecha_inicio)} · plan: ${esc(planes.plan(a.plan).nombre)}${a.fecha_baja ? ` · baja el ${fmt(a.fecha_baja)}` : ''}</p>
     ${aviso}
     <div class="card"><h2 style="margin-top:0">Contacto</h2><div class="kv">
       <div class="k">WhatsApp</div><div>${a.whatsapp ? copiable(`${a.whatsapp_pais || ''} ${a.whatsapp}`.trim()) : '—'}</div>
@@ -1165,7 +1180,8 @@ router.get('/pagos', requireAuth, async (req, res) => {
   const where = cond.length ? `WHERE ${cond.join(' AND ')}` : '';
 
   const { rows } = await query(`
-    SELECT p.*, a.nombre AS alumno_nombre, c.curso, c.modalidad
+    SELECT p.*, a.nombre AS alumno_nombre, c.curso, c.modalidad,
+           (SELECT count(*) FROM pagos x WHERE x.alumno_id = p.alumno_id)::int AS total
     FROM pagos p
     JOIN alumnos a ON a.id = p.alumno_id
     JOIN cohortes c ON c.id = a.cohorte_id
@@ -1185,7 +1201,7 @@ router.get('/pagos', requireAuth, async (req, res) => {
   const lista = rows.length ? `<div class="list">${rows.map(p => `
     <a class="list-item" href="/admin/alumno/${p.alumno_id}">
       <div class="li-top">
-        <div><div class="li-title">${esc(p.alumno_nombre)} <span class="pill" style="margin:0">· pago ${p.numero_pago}/5</span></div>
+        <div><div class="li-title">${esc(p.alumno_nombre)} <span class="pill" style="margin:0">· ${p.total === 1 ? 'pago único' : `pago ${p.numero_pago}/${p.total}`}</span></div>
           <div class="li-meta">${esc(p.curso)} · ${label(p.modalidad)} · ${p.estado === 'pagado'
             ? `pagado ${fmt(p.fecha_pago)}${p.metodo ? ` (${p.metodo})` : ''}`
             : `vence ${fmtDia(p.fecha_vencimiento)}`}</div>
@@ -1198,12 +1214,13 @@ router.get('/pagos', requireAuth, async (req, res) => {
     </a>`).join('')}</div>` : '<div class="empty">No hay pagos que mostrar.</div>';
 
   const pendientesRows = (await query(`
-    SELECT p.id, p.numero_pago, p.monto, p.fecha_vencimiento, a.nombre AS alumno_nombre, c.curso, c.modalidad
+    SELECT p.id, p.numero_pago, p.monto, p.fecha_vencimiento, a.nombre AS alumno_nombre, c.curso, c.modalidad,
+           (SELECT count(*) FROM pagos x WHERE x.alumno_id = p.alumno_id)::int AS total
     FROM pagos p JOIN alumnos a ON a.id = p.alumno_id JOIN cohortes c ON c.id = a.cohorte_id
     WHERE p.estado IN ('pendiente','vencido')
     ORDER BY p.fecha_vencimiento ASC`)).rows;
   const pagoOpts = pendientesRows.map(p =>
-    `<option value="${p.id}">${esc(p.alumno_nombre)} — ${esc(p.curso)} ${label(p.modalidad)} — pago ${p.numero_pago}/5 — $${Number(p.monto)} MXN — vence ${fmtDia(p.fecha_vencimiento)}</option>`
+    `<option value="${p.id}">${esc(p.alumno_nombre)} — ${esc(p.curso)} ${label(p.modalidad)} — pago ${p.numero_pago}/${p.total} — $${Number(p.monto)} MXN — vence ${fmtDia(p.fecha_vencimiento)}</option>`
   ).join('');
 
   const aviso = req.query.error ? `<p class="pill bad">✗ ${esc(req.query.error)}</p>` : '';

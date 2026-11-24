@@ -64,11 +64,9 @@ const config = {
     currency: env('STRIPE_CURRENCY', 'mxn'),
   },
 
-  // Plan de pagos: 5 exhibiciones de $500 MXN (semanas 0/2/4/6/8 desde el
-  // inicio de la cohorte). La ventana de cobro es cuántos días antes del
-  // vencimiento se manda el link de pago por WhatsApp/correo.
+  // Los planes y montos (5 × $500 en 2026; 4 × $625 o único de $2,290 desde
+  // 2027) están en src/planes.js, no aquí.
   pagos: {
-    monto: num('PAGO_MONTO_MXN', 500),
     // Hora (CDMX) desde la que se mandan los recordatorios de cada día. La
     // secuencia (2 días antes, 1 día antes, el día y diario ya vencido) está
     // fija en engine.etapaPago; PAGOS_VENTANA_COBRO_DIAS ya no se usa.

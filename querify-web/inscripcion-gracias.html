@@ -52,16 +52,32 @@
     document.getElementById('canal-icon-wa').style.display = 'none';
     document.getElementById('canal-icon-correo').style.display = '';
   }
-  // Pagos 2-5: Stripe regresa aquí con ?pago=N (ver revisarPagosPorVencer en
-  // el backend). Antes se mostraba igual "tu lugar quedó apartado / primer
-  // pago" y confundía a quien pagaba el 2.º pago (pasó el 13 nov 2026).
+  var canal = document.getElementById('canal-lede').textContent;
+  var pesos = function (n) { return '$' + Number(n).toLocaleString('en-US') + ' MXN'; };
+
+  // Inscripción: el plan llega como ?plan= (ver iniciarInscripcion en el
+  // backend y planes.js): 4 pagos de $625, pago único de $2,290 o, en los
+  // grupos de 2026, 5 pagos de $500 (el texto original de la página).
+  var plan = q.get('plan');
+  if (plan === 'cuatro') {
+    document.getElementById('lede').textContent = 'Recibimos tu primer pago de ' + pesos(625) + '. En breve te contactamos por ' + canal + ' para confirmar los detalles del curso, tu horario y las fechas de los siguientes 3 pagos.';
+  } else if (plan === 'unico') {
+    document.getElementById('lede').textContent = 'Recibimos el pago completo de tu curso, ' + pesos(2290) + '; ya no tienes más pagos pendientes. En breve te contactamos por ' + canal + ' para confirmar los detalles del curso y tu horario.';
+  }
+
+  // Pagos siguientes: Stripe regresa aquí con ?pago=N&de=TOTAL&monto=M (ver
+  // revisarPagosPorVencer en el backend). Antes se mostraba igual "tu lugar
+  // quedó apartado / primer pago" y confundía a quien pagaba el 2.º pago (pasó
+  // el 13 nov 2026). Las ligas viejas no traen `de`/`monto`: eran de 5 × $500.
   var pago = Number(q.get('pago'));
-  if (pago >= 2 && pago <= 5) {
+  var total = Number(q.get('de')) || 5;
+  var monto = Number(q.get('monto')) || 500;
+  if (pago >= 2 && pago <= total) {
     document.title = '¡Pago recibido! — Querify Analytics';
-    document.getElementById('titulo').textContent = '¡Listo! Recibimos tu pago ' + pago + '/5';
-    document.getElementById('lede').textContent = pago === 5
-      ? 'Tu último pago de $500 MXN quedó registrado. ¡Ya completaste todos los pagos de tu curso, gracias!'
-      : 'Tu pago de $500 MXN quedó registrado automáticamente; no necesitas hacer nada más. Te avisaremos por correo cuando se acerque la fecha de tu siguiente pago.';
+    document.getElementById('titulo').textContent = '¡Listo! Recibimos tu pago ' + pago + '/' + total;
+    document.getElementById('lede').textContent = pago === total
+      ? 'Tu último pago de ' + pesos(monto) + ' quedó registrado. ¡Ya completaste todos los pagos de tu curso, gracias!'
+      : 'Tu pago de ' + pesos(monto) + ' quedó registrado automáticamente; no necesitas hacer nada más. Te avisaremos por correo cuando se acerque la fecha de tu siguiente pago.';
     document.getElementById('canal-badge').style.display = 'none';
   }
 </script>

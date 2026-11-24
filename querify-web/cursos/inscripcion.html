@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aparta tu lugar — Querify Analytics</title>
-<meta name="description" content="Elige tu curso, tu fecha de inicio y aparta tu lugar con el primer pago de $500 MXN. Cupo limitado a 10 alumnos por grupo.">
+<meta name="description" content="Elige tu curso, tu fecha de inicio y aparta tu lugar: 4 pagos de $625 MXN o un pago único de $2,290 MXN. Cupo limitado a 10 alumnos por grupo.">
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,29 +37,54 @@
       </nav>
       <span class="badge-live"><span class="pulse"></span>Cupo limitado a 10 alumnos por grupo</span>
       <h1>Aparta tu lugar</h1>
-      <p class="lede">Elige tu curso y tu fecha de inicio, y aparta tu lugar con el primer pago de $500 MXN con tarjeta o transferencia bancaria (pago seguro con Stripe). Los otros 4 pagos se cobran automáticamente cada 2 semanas.</p>
+      <p class="lede">Elige tu curso, tu fecha de inicio y cómo quieres pagar: en 4 pagos de $625 MXN (el primero aparta tu lugar) o en un solo pago de $2,290 MXN. Con tarjeta o transferencia bancaria, pago seguro con Stripe.</p>
     </div>
   </section>
 
   <section class="course-body">
     <div class="container course-cols">
       <div>
-        <div class="temario-head">
-          <span class="eyebrow">Plan de pagos</span>
-          <h2>$2,500 MXN en 5 pagos de $500</h2>
-          <p>El primer pago aparta tu lugar. Los siguientes 4 se cobran cada 2 semanas a partir del inicio del curso — te llega una liga de pago segura por WhatsApp (o correo) unos días antes de cada vencimiento.</p>
-        </div>
-        <div class="plan-pagos">
-          <div class="pago-row"><span class="pago-num">1</span><div><b>Al apartar tu lugar</b><p>Semana 0 — asegura tu cupo en el grupo</p></div><span class="pago-monto">$500</span></div>
-          <div class="pago-row"><span class="pago-num">2</span><div><b>Segundo pago</b><p>Semana 2 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
-          <div class="pago-row"><span class="pago-num">3</span><div><b>Tercer pago</b><p>Semana 4 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
-          <div class="pago-row"><span class="pago-num">4</span><div><b>Cuarto pago</b><p>Semana 6 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
-          <div class="pago-row"><span class="pago-num">5</span><div><b>Quinto pago</b><p>Semana 8 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+        <!-- Planes desde 2027: 4 pagos o pago único (ver planes.js en el backend). -->
+        <div id="planes-nuevos">
+          <div class="temario-head">
+            <span class="eyebrow">Planes de pago</span>
+            <h2>Elige cómo pagar tu curso</h2>
+            <p>Curso de 8 semanas en vivo. Puedes pagarlo en 4 partes o en una sola exhibición con descuento.</p>
+          </div>
+
+          <h3 style="margin:0 0 10px;font-size:17px">4 pagos de $625 <span style="font-weight:400;color:var(--muted)">· $2,500 MXN en total</span></h3>
+          <div class="plan-pagos">
+            <div class="pago-row"><span class="pago-num">1</span><div><b>Al apartar tu lugar</b><p>Asegura tu cupo en el grupo</p></div><span class="pago-monto">$625</span></div>
+            <div class="pago-row"><span class="pago-num">2</span><div><b>Segundo pago</b><p>Semana 2 desde el inicio del curso</p></div><span class="pago-monto">$625</span></div>
+            <div class="pago-row"><span class="pago-num">3</span><div><b>Tercer pago</b><p>Semana 4 desde el inicio del curso</p></div><span class="pago-monto">$625</span></div>
+            <div class="pago-row"><span class="pago-num">4</span><div><b>Cuarto pago</b><p>Semana 6 desde el inicio del curso</p></div><span class="pago-monto">$625</span></div>
+          </div>
+
+          <h3 style="margin:24px 0 10px;font-size:17px">Pago único de $2,290 <span style="font-weight:400;color:var(--muted)">· ahorras $210</span></h3>
+          <div class="plan-pagos">
+            <div class="pago-row"><span class="pago-num">1</span><div><b>Al apartar tu lugar</b><p>Pagas tu curso completo de una vez y ya no hay más pagos</p></div><span class="pago-monto">$2,290</span></div>
+          </div>
+
+          <div class="cert" style="margin-top:20px">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M9 14l-1.5 7L12 18l4.5 3L15 14"/></svg>
+            <div><b>¿Cómo se cobran los pagos 2 a 4?</b><p>Si eliges 4 pagos, te llega una liga de pago de Stripe por correo cerca de cada fecha. Pagas en un clic con tarjeta, o por transferencia a tu CLABE personal: en cuanto llega, el pago se registra solo.</p></div>
+          </div>
         </div>
 
-        <div class="cert" style="margin-top:20px">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M9 14l-1.5 7L12 18l4.5 3L15 14"/></svg>
-          <div><b>¿Cómo se cobran los pagos 2 a 5?</b><p>Te llega una liga de pago de Stripe por WhatsApp (o correo) cerca de cada fecha de vencimiento. Pagas en un clic con tarjeta, o por transferencia a tu CLABE personal: en cuanto llega, el pago se registra solo.</p></div>
+        <!-- Grupos de 2026 (solo por la liga de inscripción de un grupo ya iniciado). -->
+        <div id="plan-anterior" hidden>
+          <div class="temario-head">
+            <span class="eyebrow">Plan de pagos</span>
+            <h2>$2,500 MXN en 5 pagos de $500</h2>
+            <p>El primer pago aparta tu lugar. Los siguientes 4 se cobran cada 2 semanas a partir del inicio del curso — te llega una liga de pago segura por correo unos días antes de cada vencimiento.</p>
+          </div>
+          <div class="plan-pagos">
+            <div class="pago-row"><span class="pago-num">1</span><div><b>Al apartar tu lugar</b><p>Semana 0 — asegura tu cupo en el grupo</p></div><span class="pago-monto">$500</span></div>
+            <div class="pago-row"><span class="pago-num">2</span><div><b>Segundo pago</b><p>Semana 2 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+            <div class="pago-row"><span class="pago-num">3</span><div><b>Tercer pago</b><p>Semana 4 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+            <div class="pago-row"><span class="pago-num">4</span><div><b>Cuarto pago</b><p>Semana 6 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+            <div class="pago-row"><span class="pago-num">5</span><div><b>Quinto pago</b><p>Semana 8 desde el inicio del curso</p></div><span class="pago-monto">$500</span></div>
+          </div>
         </div>
       </div>
 
@@ -80,9 +105,23 @@
           <p class="err-msg" data-error="cohorte" style="margin-top:10px"></p>
         </div>
 
+        <div class="side-card" id="insc-plan-card">
+          <h5 class="mono-label">Forma de pago</h5>
+          <div class="cohortes-list" id="insc-plan">
+            <label class="cohorte-opt">
+              <input type="radio" name="plan" value="cuatro" checked>
+              <span class="co-main"><b>4 pagos de $625</b><span>Hoy pagas $625 y apartas tu lugar</span></span>
+            </label>
+            <label class="cohorte-opt">
+              <input type="radio" name="plan" value="unico">
+              <span class="co-main"><b>Pago único de $2,290</b><span>Pagas todo hoy y ahorras $210</span></span>
+            </label>
+          </div>
+        </div>
+
         <div class="side-card form-card" style="box-shadow:none">
           <h3>Tus datos</h3>
-          <p class="sub">Para confirmar tu apartado y avisarte de los siguientes pagos.</p>
+          <p class="sub">Para confirmar tu inscripción y, si pagas en partes, avisarte de los siguientes pagos.</p>
           <form id="inscripcion-form" novalidate>
             <div class="hp" aria-hidden="true">
               <label for="i-empresa">No llenar este campo</label>

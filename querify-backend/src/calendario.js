@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 const { config, query } = require('./db');
 const providers = require('./providers');
+const planes = require('./planes');
 
 const PREFIJO = { 'Excel': 'EXCEL', 'SQL Server': 'SQL', 'Power BI': 'POWERBI', 'Python': 'PYTHON' };
 const DIAS_VALIDOS = ['LM', 'MJ', 'SAB'];
@@ -44,11 +45,14 @@ function diasPorDefecto(curso, modalidad) {
   return ['Excel', 'Python'].includes(curso) ? 'LM' : 'MJ';
 }
 
-// Último día por default: 10 semanas. Sabatino = el sábado de la semana 10
-// (+63 días); entre semana = el segundo día de clase de la semana 10 (+65).
-function fechaFinPorDefecto(fechaInicio, dias) {
-  return fechaInicio ? sumarDias(fechaInicio, dias === 'SAB' ? 63 : 65) : null;
+// Último día por default: la última semana del curso — 8 semanas desde 2027,
+// 10 en los grupos de 2026 (ver planes.js). Sabatino = el sábado de esa
+// semana; entre semana = su segundo día de clase (+2). Con 10 semanas da los
+// +63/+65 días de antes; con 8, +49/+51.
+function fechaFinPorDefecto(fechaInicio, dias, semanas = 8) {
+  return fechaInicio ? sumarDias(fechaInicio, (semanas - 1) * 7 + (dias === 'SAB' ? 0 : 2)) : null;
 }
+const finPorDefectoDe = c => fechaFinPorDefecto(c.fecha_inicio, c.dias, planes.semanasDe(c));
 
 // Nomenclatura del usuario: CURSO-DIAS-MMYY (mes y año de inicio), ej. EXCEL-SAB-1026.
 function codigoGrupo(c) {
@@ -64,7 +68,7 @@ const fmtLargo = f => new Date(`${ymd(f)}T12:00:00Z`).toLocaleDateString('es-MX'
 
 // Fechas del recordatorio para un grupo: [desde, hasta] (hasta = null si es de un día).
 function fechasDe(c, rec) {
-  const base = rec.ancla === 'fin' ? ymd(c.fecha_fin) || fechaFinPorDefecto(c.fecha_inicio, c.dias) : ymd(c.fecha_inicio);
+  const base = rec.ancla === 'fin' ? ymd(c.fecha_fin) || finPorDefectoDe(c) : ymd(c.fecha_inicio);
   let a = rec.dia_desde, b = rec.dia_hasta;
   if (b == null || b === a) return [sumarDias(base, a), null];
   if (b < a) [a, b] = [b, a];
@@ -96,7 +100,10 @@ function construirEvento({ subject, cuerpo, desde, hasta }) {
 }
 
 const enlaceGrupo = c => `${config.publicBaseUrl || `http://localhost:${config.port}`}/admin/grupo/${c.id}`;
-const finDe = c => c.fecha_fin || fechaFinPorDefecto(c.fecha_inicio, c.dias);
+const finDe = c => c.fecha_fin || finPorDefectoDe(c);
+// Un recordatorio con plan_pagos ('anterior'/'nuevo') solo aplica a los
+// grupos de ese esquema (ej. las fechas límite "/5" vs. "/4"); sin él, a todos.
+const aplicaAlGrupo = (rec, c) => !rec.plan_pagos || rec.plan_pagos === planes.esquemaDe(c);
 
 // Recordatorio de un grupo ('grupo'), con el nombre del grupo en el título.
 function eventoPara(c, rec) {
@@ -146,7 +153,7 @@ async function sincronizarCohorte(cohorteId) {
   const conAlumnos = (await query(`SELECT EXISTS (SELECT 1 FROM alumnos WHERE cohorte_id = $1 AND fecha_baja IS NULL) AS si`, [cohorteId])).rows[0].si;
   const recs = c.fecha_inicio
     ? (await query(`SELECT * FROM recordatorios WHERE alcance IS DISTINCT FROM 'general' ORDER BY orden, id`)).rows
-      .filter(r => !r.solo_con_alumnos || conAlumnos)
+      .filter(r => (!r.solo_con_alumnos || conAlumnos) && aplicaAlGrupo(r, c))
     : [];
   const filas = (await query(`SELECT * FROM cohorte_eventos WHERE cohorte_id = $1`, [cohorteId])).rows;
   const existentes = new Map(filas.map(f => [`${f.recordatorio_id}|${f.buzon}`, f]));
@@ -224,7 +231,7 @@ async function sincronizarGenerales() {
   const porFecha = new Map();
   for (const rec of recs) {
     for (const c of grupos) {
-      if (rec.solo_con_alumnos && !c.con_alumnos) continue;
+      if ((rec.solo_con_alumnos && !c.con_alumnos) || !aplicaAlGrupo(rec, c)) continue;
       const [desde, hasta] = fechasDe(c, rec);
       const k = `${rec.id}|${desde}`;
       if (!porFecha.has(k)) porFecha.set(k, { rec, desde, hasta, grupos: [] });
